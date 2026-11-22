@@ -1,0 +1,57 @@
+x-backend-env: &backend-env
+  PREVIEW_PARALLELISM: ${PREVIEW_PARALLELISM:-3}
+  PREVIEW_DEADLINE_SECONDS: ${PREVIEW_DEADLINE_SECONDS:-60}
+  TICK_DEADLINE_SECONDS: ${TICK_DEADLINE_SECONDS:-20}
+  # 注文確定は既定で無効。有効にするときだけ true にする（.env で上書き）
+  ALLOW_ORDER_SUBMIT: ${ALLOW_ORDER_SUBMIT:-false}
+  # 資格情報の暗号化鍵（必須）。.env に設定する（.env.example を参照。コミットしない）
+  CREDENTIALS_KEY: ${CREDENTIALS_KEY:?CREDENTIALS_KEY を .env に設定してください（.env.example を参照）}
+  DYNAMODB_ENDPOINT: http://dynamodb:8000
+  AWS_REGION: ${AWS_REGION:-ap-northeast-1}
+
+services:
+  dynamodb:
+    image: amazon/dynamodb-local:3.3.2
+    # ボリュームへ書き込むため root で動かす（ローカル開発用）
+    user: root
+    command: ["-jar", "DynamoDBLocal.jar", "-sharedDb", "-dbPath", "/data"]
+    volumes:
+      - dynamodb-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/8000"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  backend:
+    build: ./backend
+    environment: *backend-env
+    depends_on:
+      dynamodb:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # 1分ごとの監視と、毎晩21時（JST）の確認。画面には出ない
+  worker:
+    build: ./backend
+    command: ["python", "-m", "spider.worker"]
+    environment: *backend-env
+    healthcheck:
+      disable: true
+    depends_on:
+      dynamodb:
+        condition: service_healthy
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "127.0.0.1:8080:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  dynamodb-data:

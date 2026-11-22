@@ -3,6 +3,8 @@ name = "spider"
 version = "0.1.0"
 requires-python = ">=3.12"
 dependencies = [
+    "boto3>=1.44.9",
+    "cryptography>=50.0.2",
     "fastapi>=0.165.0",
     "httpx>=0.27",
     "pydantic>=2",
@@ -31,3 +33,7 @@ select = ["E", "F", "I", "UP", "B"]
 [tool.mypy]
 strict = true
 files = ["spider", "test"]
+
+[[tool.mypy.overrides]]
+module = ["boto3.*", "botocore.*"]
+ignore_missing_imports = true

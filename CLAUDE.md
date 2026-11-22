@@ -17,7 +17,10 @@
 ## 作業の進め方
 
 - コード実装は `/lean-implement` で進める（規模判定 → 設計 → 人の承認 → モック承認 → プランモード → TDD 実装 → セルフレビュー）。typo など自明な修正は直接行ってよい。
-- 実装後の二次レビューは `/second-review [比較元ref]`。
+- `/lean-implement` は最後に `/second-review` を自動で呼び、Blocker / Major の修正と再レビューを **最大3回** まで繰り返す。上限に達した、同じ指摘が続く、指摘が減らない、要議論、のいずれかで止まって人に報告する。
+- 役割分担: `/second-review` は指摘を返すだけでコードを変更しない（/simplify の観点も指摘として返す）。修正は `/lean-implement` が行う。
+- 単独で二次レビューだけ行うときは `/second-review [比較元ref]`。
+- **`/lean-implement` で実装したときは、実装 → セルフレビューと修正 → 二次レビュー（/simplify 観点を含む、最大3回）まで終わるまで完了報告をしない。** 会話が長くなって手順を見失った場合は、`.claude/skills/lean-implement/SKILL.md` の Step 8〜10 を読み直して実行する。
 - 設計書: `docs/design/YYYYMMDD-<slug>.md`（テンプレート: `.claude/skills/lean-implement/templates/design.md`）
 - モック: `docs/design/<slug>/mock/`（本番コードに混ぜない）
 - 人の承認が必要な場面では、「承認」と明確に返ってくるまで次に進まない。
@@ -38,12 +41,22 @@
 - レイヤー境界のポートは実装が1つでもよい。レイヤー内部の単一実装の抽象は作らない。
 
 パッケージのルートは `backend/spider/`（`domain/` `application/` `infrastructure/` `presentation/`）、テストは `backend/test/`。FastAPI アプリの組み立て（infrastructure の注入）は `backend/spider/main.py` だけで行う（`uv run uvicorn spider.main:app`）。
+API はすべて `/api` 配下（`GET /api/healthz` がヘルスチェック）。フロントは `frontend/`（React + Vite + TypeScript、`src/components/` のカード式 UI）で、通信は同一オリジンの `/api`。
+
+## 起動（Docker Compose）
+
+- `docker compose up --build` で `dynamodb`（DynamoDB Local。データは名前付きボリューム）、`backend`（FastAPI）、`worker`（1分ごとの監視と毎晩21時〔JST〕の確認。同じイメージで `python -m spider.worker`）、`frontend`（nginx。`/api/` を backend へ中継）が起動する。画面は `http://127.0.0.1:8080`（ローカルのみで公開）。
+- **`CREDENTIALS_KEY`（サイトのパスワードを暗号化する鍵）が必須**。`.env.example` を `.env` にコピーして設定する（`.env` はコミットしない）。DB を初期化するときは `docker compose down -v`（鍵を変えたら必須。保存済みのアカウントは復号できなくなる）。
+- 設定は環境変数のみ: `PREVIEW_PARALLELISM`（既定3・上限5）、`PREVIEW_DEADLINE_SECONDS`（既定60・上限120）、`TICK_DEADLINE_SECONDS`（既定20）、`ALLOW_ORDER_SUBMIT`（既定 `false`。注文確定と自動購入を許可するときだけ `true`）、`DYNAMODB_ENDPOINT` / `AWS_REGION` / `TABLE_PREFIX`。
+- ストレージ（アカウント・お気に入り・通知・設定）は、ポート（`application/ports.py`）の背後にある DynamoDB 実装（`infrastructure/dynamodb_repos.py`）。書き込みは、ユーザー操作と状態遷移のときだけ（監視の1回ごとの読み取りでは書かない）。購入は `watching → purchasing` の条件付き書き込みに成功した実行だけが行う（二重購入の防止）。AWS では、`check_tick` / `nightly_check` を EventBridge Scheduler → Lambda から呼ぶ想定（ワーカーはその代わり）。
+- ローカルに Node は無い前提。フロントのツールは Docker で実行する（下記）。
 
 ## テスト
 
 - red → green → refactor。テストを先に書き、失敗を確認してから実装する。
 - コミットする場合は「テスト追加」と「実装」を分けると red 先行を確認しやすい。
 - テストは実サイトにアクセスしない。記録済みレスポンスやフィクスチャを使う。時刻・乱数は固定する。
+- リポジトリの契約テストは、`DYNAMODB_ENDPOINT` を設定すると DynamoDB Local でも実行される（例: `docker run -d -p 8001:8000 amazon/dynamodb-local -jar DynamoDBLocal.jar -inMemory` → `DYNAMODB_ENDPOINT=http://localhost:8001 uv run pytest`。`127.0.0.1` ではなく `localhost` を使う）。設定しなければメモリ上のフェイクだけで実行される。
 - モックはレイヤー境界（ポート）だけに使う。
 
 ## チェックコマンド
@@ -64,6 +77,7 @@ npm run typecheck           # package.json にある場合（Biome は型チェ�
 npm test                    # package.json にある場合
 ```
 
+- フロントのチェックは Docker で実行する（`docker build --target check ./frontend` が Biome・型・テストをまとめて実行）。個別に実行するときは `docker run --rm -v "$PWD/frontend":/app -w /app node:22-alpine npx biome ci .` のようにする。
 - フロントのフォーマット・Lint は Biome に統一する。ESLint / Prettier は追加しない。
 - `biome check --write --unsafe` は使わない（挙動が変わる修正を含むため）。
 
@@ -71,3 +85,6 @@ npm test                    # package.json にある場合
 
 - 基盤（ドメインモデル、DB スキーマ、共通ユーティリティ、依存関係、Dockerfile / compose、CI）を変更するときは、設計書に理由と影響範囲を書く。
 - 秘密情報（API キー、パスワード、`.env`）をコミットしない。
+- reCAPTCHA・CAPTCHA・WAF は回避しない（トークンの生成・取得・転送、実ブラウザの自動操作で判定を通すことをしない）。サイトの注文確定は reCAPTCHA により、現状は受理されない。
+- 実サイトでの注文確定（「購入する」）の検証は、ユーザーの個別の明示的な許可がない限り行わない。
+- パスワード・氏名・住所・メール・Cookie をフィクスチャ・ログ・ドキュメントに残さない。

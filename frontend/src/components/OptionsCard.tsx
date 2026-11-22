@@ -1,7 +1,7 @@
 import type { PaymentMethod } from "../types";
 import { Segmented } from "./Segmented";
 
-export type Mode = "check" | "order";
+export type Mode = "check" | "order" | "handoff";
 export type SearchMode = "code" | "partial";
 
 type Props = {
@@ -47,6 +47,7 @@ export function OptionsCard({
             options={[
               { value: "check", label: "確認画面まで" },
               { value: "order", label: "注文確定まで", disabled: submitBlocked, danger: true },
+              { value: "handoff", label: "ブラウザで購入", disabled: !selected?.preview_supported },
             ]}
           />
         </div>

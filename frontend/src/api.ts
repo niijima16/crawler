@@ -89,6 +89,7 @@ export type PreviewRequest = {
   product_id: number;
   payment_method: string;
   submit_order: boolean;
+  handoff: boolean;
 };
 
 export type FavoritePatch = {

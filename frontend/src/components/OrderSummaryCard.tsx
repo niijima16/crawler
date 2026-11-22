@@ -10,6 +10,9 @@ type Props = {
   running: boolean;
   locked: boolean;
   onRun: () => void;
+  handoffReady: boolean;
+  canOpenHandoff: boolean;
+  onOpenHandoff: () => void;
 };
 
 export function OrderSummaryCard({
@@ -20,8 +23,18 @@ export function OrderSummaryCard({
   running,
   locked,
   onRun,
+  handoffReady,
+  canOpenHandoff,
+  onOpenHandoff,
 }: Props) {
-  const label = mode === "order" ? "注文確定まで実行する" : "確認画面まで進める";
+  const openMode = mode === "handoff" && handoffReady;
+  const label = openMode
+    ? "確認画面を開く"
+    : mode === "order"
+      ? "注文確定まで実行する"
+      : mode === "handoff"
+        ? "確認画面まで進めてブラウザに引き継ぐ"
+        : "確認画面まで進める";
   return (
     <section className={`card side${mode === "order" ? " order" : ""}`} aria-label="ご注文内容">
       <div className="ch">
@@ -66,8 +79,8 @@ export function OrderSummaryCard({
       <button
         type="button"
         className={`block${mode === "order" ? " order" : ""}`}
-        disabled={locked || running || product === null}
-        onClick={onRun}
+        disabled={openMode ? !canOpenHandoff : locked || running || product === null}
+        onClick={openMode ? onOpenHandoff : onRun}
       >
         {label}
       </button>

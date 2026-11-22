@@ -1,0 +1,36 @@
+{
+  "manifest_version": 3,
+  "name": "Pickup Assistant Handoff",
+  "version": "0.1.0",
+  "description": "Pickup Assistant の確認画面を、用意済みのセッションでブラウザに開き、同意チェックと購入ボタンを目立たせます（チェックや購入は押しません）。",
+  "permissions": [
+    "cookies"
+  ],
+  "host_permissions": [
+    "https://www.dollyteria.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "http://127.0.0.1:8080/*",
+        "http://localhost:8080/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_start"
+    },
+    {
+      "matches": [
+        "https://www.dollyteria.com/cart/confirm*"
+      ],
+      "js": [
+        "confirm.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ]
+}

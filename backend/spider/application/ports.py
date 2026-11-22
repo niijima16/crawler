@@ -25,6 +25,10 @@ class PaymentMethodUnavailable(Exception):
     """選んだ支払方法が、この商品・アカウントでは選べない。"""
 
 
+class HandoffAndSubmit(Exception):
+    """handoff と submit_order は同時に指定できない。"""
+
+
 class OrderSubmitDisabled(Exception):
     """サーバー設定で注文確定が許可されていない。"""
 
@@ -43,6 +47,8 @@ class SiteClient(Protocol):
     async def get(self, url: str) -> str: ...
 
     async def post(self, url: str, data: dict[str, str]) -> str: ...
+
+    def get_cookie(self, name: str) -> str | None: ...
 
     async def aclose(self) -> None: ...
 

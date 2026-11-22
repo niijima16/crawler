@@ -16,6 +16,7 @@ from spider.application.ports import (
     DuplicateFavorite,
     EntityNotFound,
     FavoriteLimitReached,
+    HandoffAndSubmit,
     InvalidTransition,
     LoginFailed,
     NotPurchasable,
@@ -83,6 +84,7 @@ class PreviewRequest(BaseModel):
     product_id: int
     payment_method: str = DEFAULT_PAYMENT_METHOD_ID
     submit_order: bool = False
+    handoff: bool = False
 
     @model_validator(mode="after")
     def _needs_credentials(self) -> "PreviewRequest":
@@ -242,6 +244,7 @@ def create_app(deps: Dependencies) -> FastAPI:
                 product_id=body.product_id,
                 payment_method_id=body.payment_method,
                 submit_order=body.submit_order,
+                handoff=body.handoff,
             )
         except ProductNotFound:
             return _error(404, "product not found")
@@ -342,6 +345,10 @@ def create_app(deps: Dependencies) -> FastAPI:
     @app.exception_handler(UnsupportedPaymentMethod)
     async def unsupported_payment(request: Request, exc: UnsupportedPaymentMethod) -> JSONResponse:
         return _error(422, f"unsupported_payment_method:{exc.reason}")
+
+    @app.exception_handler(HandoffAndSubmit)
+    async def handoff_and_submit(request: Request, exc: HandoffAndSubmit) -> JSONResponse:
+        return _error(422, "handoff_and_submit")
 
     @app.exception_handler(OrderSubmitDisabled)
     async def submit_disabled(request: Request, exc: OrderSubmitDisabled) -> JSONResponse:

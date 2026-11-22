@@ -3,6 +3,7 @@ from collections.abc import Awaitable, Callable, Coroutine
 from typing import Any, NamedTuple
 
 from spider.application.ports import (
+    HandoffAndSubmit,
     NotPurchasable,
     OrderSubmitDisabled,
     PaymentMethodUnavailable,
@@ -14,9 +15,16 @@ from spider.application.ports import (
 from spider.application.retry import PreviewRuntime, retrying
 from spider.application.use_cases import SALES_HISTORY_URL, SITE
 from spider.domain.payment import PaymentMethod, get_payment_method
-from spider.domain.product import CheckoutPreview, OrderForm, OrderResult, StorePickupResult
+from spider.domain.product import (
+    CheckoutPreview,
+    Handoff,
+    OrderForm,
+    OrderResult,
+    StorePickupResult,
+)
 
 MAX_PARALLELISM = 5
+CONFIRM_URL = f"{SITE}/cart/confirm"
 CUSTOMER_URL = f"{SITE}/cart/customer"
 SHIPPING_URL = f"{SITE}/cart/shipping"
 
@@ -51,7 +59,11 @@ class _Attempts:
         self.count += 1
 
 
-def _validate(payment_method_id: str, submit_order: bool, config: PreviewConfig) -> PaymentMethod:
+def _validate(
+    payment_method_id: str, submit_order: bool, handoff: bool, config: PreviewConfig
+) -> PaymentMethod:
+    if handoff and submit_order:
+        raise HandoffAndSubmit
     try:
         method = get_payment_method(payment_method_id)
     except KeyError:
@@ -77,8 +89,9 @@ async def store_pickup_preview(
     product_id: int,
     payment_method_id: str,
     submit_order: bool,
+    handoff: bool = False,
 ) -> StorePickupResult:
-    method = _validate(payment_method_id, submit_order, config)
+    method = _validate(payment_method_id, submit_order, handoff, config)
     attempts = _Attempts()
     deadline_at = runtime.now() + config.deadline_seconds
 
@@ -99,6 +112,17 @@ async def store_pickup_preview(
         raise PreviewTimeout from None
 
     try:
+        if handoff:
+            cookie = reached.client.get_cookie("PHPSESSID")
+            if cookie is None:
+                raise UpstreamError
+            return StorePickupResult(
+                preview=reached.preview,
+                attempts=attempts.count,
+                handoff=Handoff(
+                    cookie_name="PHPSESSID", cookie_value=cookie, confirm_url=CONFIRM_URL
+                ),
+            )
         order = (
             await _submit_order(reached, parsers, runtime, config.history_deadline_seconds)
             if submit_order

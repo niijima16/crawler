@@ -794,3 +794,44 @@ input[role="switch"] {
 .banner.warn {
   margin-bottom: 0;
 }
+
+/* --- セッション引き継ぎ --- */
+.secret {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+  background: var(--bg);
+  margin: 8px 0;
+}
+.secret .val {
+  flex: 1;
+  letter-spacing: 1px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+button.ghost {
+  background: transparent;
+  color: var(--text);
+  border: 1px solid var(--line);
+  font-weight: 600;
+  padding: 6px 12px;
+}
+ol.steps {
+  margin: 8px 0 0;
+  padding-left: 1.3em;
+  font-size: 14px;
+}
+ol.steps li {
+  margin: 2px 0;
+}
+.chip.warn {
+  background: var(--warn-bg);
+  color: var(--warn);
+}

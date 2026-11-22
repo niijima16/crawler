@@ -21,10 +21,17 @@ export type OrderResult = {
   reason: string | null;
 };
 
+export type Handoff = {
+  cookie_name: string;
+  cookie_value: string;
+  confirm_url: string;
+};
+
 export type StorePickupResult = {
   preview: CheckoutPreview;
   attempts: number;
   order: OrderResult | null;
+  handoff: Handoff | null;
 };
 
 export type Account = { id: string; label: string; email: string };

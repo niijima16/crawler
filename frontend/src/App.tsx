@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError, api } from "./api";
 import { AccountCard } from "./components/AccountCard";
 import { AutoPurchaseTab } from "./components/AutoPurchaseTab";
 import { FavoritesTab } from "./components/FavoritesTab";
+import { HandoffCard } from "./components/HandoffCard";
 import { Header } from "./components/Header";
 import { type Mode, OptionsCard, type SearchMode } from "./components/OptionsCard";
 import { OrderConfirmDialog } from "./components/OrderConfirmDialog";
@@ -11,6 +12,7 @@ import { type Outcome, ResultCard } from "./components/ResultCard";
 import { SearchCard } from "./components/SearchCard";
 import { Stepper } from "./components/Stepper";
 import { type Tab, Tabs } from "./components/Tabs";
+import { isExtensionInstalled, openConfirmation } from "./extension";
 import { maskEmail } from "./format";
 import { favoriteError, LOGIN_INVALIDATED } from "./messages";
 import type {
@@ -77,6 +79,16 @@ export function App() {
     return () => clearInterval(timer);
   }, [loadStatus]);
 
+  // 引き継ぎが完了したら、拡張があれば確認画面を別タブに自動で開く（1回だけ）。
+  const openedHandoffRef = useRef<string | null>(null);
+  useEffect(() => {
+    const handoff = outcome?.status === "done" ? outcome.result.handoff : null;
+    if (handoff && isExtensionInstalled() && openedHandoffRef.current !== handoff.cookie_value) {
+      openedHandoffRef.current = handoff.cookie_value;
+      openConfirmation(handoff.cookie_value);
+    }
+  }, [outcome]);
+
   const locked = accountId === null;
   const account = accounts?.find((a) => a.id === accountId) ?? null;
   const paymentLabel = methods.find((m) => m.id === paymentId)?.label ?? "";
@@ -129,6 +141,7 @@ export function App() {
         product_id: selected.product_id,
         payment_method: paymentId,
         submit_order: submitOrder,
+        handoff: mode === "handoff",
       });
       setOutcome({ status: "done", result });
     } catch (error) {
@@ -195,8 +208,23 @@ export function App() {
                 running={running}
                 locked={locked}
                 onRun={() => (mode === "order" ? setConfirming(true) : execute(false))}
+                handoffReady={outcome?.status === "done" && outcome.result.handoff !== null}
+                canOpenHandoff={isExtensionInstalled()}
+                onOpenHandoff={() =>
+                  outcome?.status === "done" &&
+                  outcome.result.handoff &&
+                  openConfirmation(outcome.result.handoff.cookie_value)
+                }
               />
-              {outcome && <ResultCard outcome={outcome} />}
+              {outcome?.status === "done" && outcome.result.handoff ? (
+                <HandoffCard
+                  preview={outcome.result.preview}
+                  handoff={outcome.result.handoff}
+                  extensionInstalled={isExtensionInstalled()}
+                />
+              ) : (
+                outcome && <ResultCard outcome={outcome} />
+              )}
             </div>
           </div>
         </>

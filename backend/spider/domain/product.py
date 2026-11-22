@@ -39,9 +39,18 @@ class OrderForm(BaseModel):
     fields: dict[str, str]
 
 
+class Handoff(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    cookie_name: str
+    cookie_value: str
+    confirm_url: str
+
+
 class StorePickupResult(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     preview: CheckoutPreview
     attempts: int
     order: OrderResult | None = None
+    handoff: Handoff | None = None

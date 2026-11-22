@@ -33,6 +33,9 @@ class HttpSiteClient:
     async def post(self, url: str, data: dict[str, str]) -> str:
         return await self._request("POST", url, data=data)
 
+    def get_cookie(self, name: str) -> str | None:
+        return self._http.cookies.get(name)
+
     async def aclose(self) -> None:
         await self._http.aclose()
 

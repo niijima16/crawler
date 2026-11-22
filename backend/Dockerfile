@@ -8,7 +8,7 @@ COPY spider ./spider
 RUN uv sync --frozen --no-dev
 
 FROM python:3.14-slim
-RUN useradd --create-home app
+RUN useradd --create-home app && mkdir /secrets && chown app /secrets
 WORKDIR /app
 COPY --from=build /app /app
 ENV PATH="/app/.venv/bin:$PATH" PYTHONUNBUFFERED=1

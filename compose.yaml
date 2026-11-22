@@ -4,8 +4,10 @@ x-backend-env: &backend-env
   TICK_DEADLINE_SECONDS: ${TICK_DEADLINE_SECONDS:-20}
   # 注文確定は既定で無効。有効にするときだけ true にする（.env で上書き）
   ALLOW_ORDER_SUBMIT: ${ALLOW_ORDER_SUBMIT:-false}
-  # 資格情報の暗号化鍵（必須）。.env に設定する（.env.example を参照。コミットしない）
-  CREDENTIALS_KEY: ${CREDENTIALS_KEY:?CREDENTIALS_KEY を .env に設定してください（.env.example を参照）}
+  # 資格情報の暗号化鍵。空なら、ローカル用に自動生成して CREDENTIALS_KEY_FILE に保存する
+  # （backend と worker で共有するボリューム。DB のボリュームと同じ寿命）。指定があれば、そちらを優先する
+  CREDENTIALS_KEY: ${CREDENTIALS_KEY:-}
+  CREDENTIALS_KEY_FILE: /secrets/credentials.key
   DYNAMODB_ENDPOINT: http://dynamodb:8000
   AWS_REGION: ${AWS_REGION:-ap-northeast-1}
 
@@ -27,6 +29,8 @@ services:
   backend:
     build: ./backend
     environment: *backend-env
+    volumes:
+      - app-secrets:/secrets
     depends_on:
       dynamodb:
         condition: service_healthy
@@ -37,6 +41,8 @@ services:
     build: ./backend
     command: ["python", "-m", "spider.worker"]
     environment: *backend-env
+    volumes:
+      - app-secrets:/secrets
     healthcheck:
       disable: true
     depends_on:
@@ -55,3 +61,4 @@ services:
 
 volumes:
   dynamodb-data:
+  app-secrets:

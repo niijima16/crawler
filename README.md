@@ -13,13 +13,15 @@
 
 Node や Python をローカルに入れる必要はない（ビルドも Docker の中で行う）。
 
-### 1. 設定ファイル `.env` を作る
+### 1. 起動の準備（ローカルでは、何も設定しなくてよい）
 
 ```bash
-cp .env.example .env
+cp .env.example .env   # 設定を変えたいときだけ（なくても起動できる）
 ```
 
-`.env` の `CREDENTIALS_KEY` に、サイトのパスワードを暗号化する鍵を設定する（**必須**）。鍵は次のどちらかで作る。
+サイトのパスワードを暗号化する鍵（`CREDENTIALS_KEY`）は、**ローカルでは空のままでよい**。初回の起動時に自動で作られ、Docker のボリュームに保存される（`backend` と `worker` で共有。保存したデータと同じ寿命）。AWS などの設定は要らない。
+
+自分で鍵を指定したいときだけ、`.env` の `CREDENTIALS_KEY` に次のどちらかで作った値を入れる（指定があれば、そちらが優先される）。
 
 ```bash
 openssl rand -base64 32 | tr '+/' '-_'
@@ -27,7 +29,7 @@ openssl rand -base64 32 | tr '+/' '-_'
 python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
 ```
 
-> `.env` はコミットしない（`.gitignore` 済み）。鍵を失くしたり変えたりすると、保存済みのアカウントは復号できなくなる（アカウントを再登録すれば復旧できる）。
+> `.env` はコミットしない（`.gitignore` 済み）。自動生成の鍵は、データと同じ場所に置かれるため、**ローカル専用**。AWS などで動かすときは、必ず環境変数（や KMS）で鍵を指定する。
 
 ### 2. 起動する
 
@@ -51,10 +53,10 @@ docker compose up --build
 
 ```bash
 docker compose down        # 停止（保存したアカウント・お気に入りは残る）
-docker compose down -v     # 停止して、保存したデータ（DynamoDB のボリューム）も消す
+docker compose down -v     # 停止して、保存したデータ（アカウント・お気に入り・自動生成した鍵）も消す
 ```
 
-鍵（`CREDENTIALS_KEY`）を変えたときは、`down -v` でデータを消してから起動する。
+自分で指定した鍵（`CREDENTIALS_KEY`）を変えたときは、`down -v` でデータを消してから起動する（古い鍵で暗号化したアカウントは読めなくなる）。
 
 ### ログを見る
 
@@ -67,7 +69,7 @@ docker compose logs -f worker     # 1分ごとの監視・21時の確認
 
 | 名前 | 既定 | 内容 |
 |---|---|---|
-| `CREDENTIALS_KEY` | なし（必須） | サイトのパスワードを暗号化する鍵 |
+| `CREDENTIALS_KEY` | 空（ローカルは自動生成） | サイトのパスワードを暗号化する鍵。AWS などでは必ず指定する |
 | `ALLOW_ORDER_SUBMIT` | `false` | `true` のときだけ、注文確定と自動購入を許可する |
 | `PREVIEW_PARALLELISM` | `3`（上限5） | 確認画面まで進めるときの同時セッション数 |
 | `PREVIEW_DEADLINE_SECONDS` | `60`（上限120） | 確認画面までの制限時間（秒） |

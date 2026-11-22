@@ -3,6 +3,10 @@ from cryptography.fernet import Fernet, InvalidToken
 from spider.application.ports import SecretBoxError
 
 
+def generate_key() -> str:
+    return Fernet.generate_key().decode()
+
+
 class FernetSecretBox:
     """資格情報の暗号化（Fernet）。鍵は環境変数で渡す（AWS では KMS に差し替える想定）。"""
 

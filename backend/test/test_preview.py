@@ -1,4 +1,5 @@
 import asyncio
+from collections.abc import Callable
 
 import pytest
 
@@ -17,7 +18,7 @@ from spider.application.preview import (
     PreviewConfig,
     store_pickup_preview,
 )
-from spider.application.retry import PreviewRuntime
+from spider.application.retry import PreviewRuntime, backoff_delay, fixed_delay
 from spider.application.use_cases import SALES_HISTORY_URL, ProductNotFound
 from spider.domain.product import Handoff, OrderResult, StorePickupResult
 from spider.infrastructure.history_parser import extract_orders
@@ -60,6 +61,7 @@ async def _run(
     payment_method_id: str = "8",
     deadline_seconds: float = 60.0,
     clock: FakeTime | None = None,
+    retry_delay: Callable[[int, Callable[[], float]], float] | None = None,
 ) -> StorePickupResult:
     clock = clock or FakeTime()
     return await store_pickup_preview(
@@ -77,6 +79,7 @@ async def _run(
         product_id=PID,
         payment_method_id=payment_method_id,
         submit_order=submit_order,
+        retry_delay=retry_delay if retry_delay is not None else backoff_delay,
     )
 
 
@@ -476,3 +479,37 @@ async def test_handoff_rejects_the_credit_card_without_any_request() -> None:
 
     assert info.value.reason == "preview"
     assert site.clients == []
+
+
+async def test_a_custom_retry_delay_is_used_for_every_step() -> None:
+    attempts = {"n": 0}
+
+    async def hook(index: int, method: str, url: str) -> None:
+        if method == "GET" and url == CUSTOMER_URL and attempts["n"] < 2:
+            attempts["n"] += 1
+            raise UpstreamError
+
+    site = FakeSite(hook=hook)
+    clock = FakeTime()
+
+    await _run(site, clock=clock, retry_delay=fixed_delay(0.1))
+
+    # 固定間隔なので、待ち時間は伸びず一定（rng=1.0 で 0.15）
+    assert [round(s, 4) for s in clock.sleeps] == [0.15, 0.15]
+
+
+async def test_the_default_retry_delay_grows_with_backoff() -> None:
+    attempts = {"n": 0}
+
+    async def hook(index: int, method: str, url: str) -> None:
+        if method == "GET" and url == CUSTOMER_URL and attempts["n"] < 2:
+            attempts["n"] += 1
+            raise UpstreamError
+
+    site = FakeSite(hook=hook)
+    clock = FakeTime()
+
+    await _run(site, clock=clock)
+
+    # 既定は指数バックオフ（rng=1.0 で 1.0, 2.0）
+    assert clock.sleeps == [1.0, 2.0]

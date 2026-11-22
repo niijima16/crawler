@@ -44,7 +44,38 @@ def test_out_of_range_or_invalid_values_fail_at_startup(env: dict[str, str]) -> 
 
 
 def test_monitor_settings_defaults_and_bounds() -> None:
-    assert load_monitor_settings({}) == MonitorSettings(20.0, 900.0)
+    assert load_monitor_settings({}) == MonitorSettings(20.0, 900.0, 10, 0.1)
     assert load_monitor_settings({"TICK_DEADLINE_SECONDS": "30"}).tick_deadline_seconds == 30.0
     with pytest.raises(ValueError):
         load_monitor_settings({"TICK_DEADLINE_SECONDS": "0"})
+
+
+def test_monitor_nightly_defaults_and_bounds() -> None:
+    settings = load_monitor_settings({})
+
+    assert settings.nightly_parallelism == 10
+    assert settings.nightly_retry_interval_seconds == 0.1
+
+
+def test_monitor_nightly_values_from_the_environment() -> None:
+    settings = load_monitor_settings(
+        {"NIGHTLY_PARALLELISM": "4", "NIGHTLY_RETRY_INTERVAL_SECONDS": "0.3"}
+    )
+
+    assert settings.nightly_parallelism == 4
+    assert settings.nightly_retry_interval_seconds == 0.3
+
+
+@pytest.mark.parametrize(
+    "env",
+    [
+        {"NIGHTLY_PARALLELISM": "0"},
+        {"NIGHTLY_PARALLELISM": "11"},
+        {"NIGHTLY_PARALLELISM": "x"},
+        {"NIGHTLY_RETRY_INTERVAL_SECONDS": "0"},
+        {"NIGHTLY_RETRY_INTERVAL_SECONDS": "9"},
+    ],
+)
+def test_monitor_nightly_out_of_range_fails(env: dict[str, str]) -> None:
+    with pytest.raises(ValueError):
+        load_monitor_settings(env)

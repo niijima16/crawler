@@ -22,7 +22,7 @@ from spider.infrastructure.product_parsers import (
 )
 from spider.infrastructure.secret_box import FernetSecretBox
 from test.fake_repos import MemoryRepos
-from test.fakes import CONFIRM_URL, PID, PRODUCT_URL, FakeSite, FakeTime, html
+from test.fakes import CONFIRM_URL, PID, PRODUCT_URL, SHIPPING_URL, FakeSite, FakeTime, html
 
 pytestmark = pytest.mark.anyio
 
@@ -48,14 +48,22 @@ class FakeClock:
 
 
 class Env:
-    def __init__(self, site: FakeSite, *, allow: bool = True, parallelism: int = 3) -> None:
+    def __init__(
+        self,
+        site: FakeSite,
+        *,
+        allow: bool = True,
+        parallelism: int = 3,
+        nightly_parallelism: int = 10,
+        nightly_retry_interval_seconds: float = 0.1,
+    ) -> None:
         self.repos = MemoryRepos()
         self.site = site
         self.clock = FakeClock()
         self.key = Fernet.generate_key().decode()
         self.box = FernetSecretBox(self.key)
         self.counter = 0
-        time = FakeTime()
+        self.ptime = FakeTime()
         self.deps = MonitorDeps(
             favorites=self.repos.favorites,
             accounts=self.repos.accounts,
@@ -66,7 +74,7 @@ class Env:
             client_factory=site.factory,
             extract_product_page=extract_product_page,
             checkout_parsers=PARSERS,
-            runtime=PreviewRuntime(sleep=time.sleep, rng=lambda: 1.0, now=time),
+            runtime=PreviewRuntime(sleep=self.ptime.sleep, rng=lambda: 1.0, now=self.ptime),
             preview_config=PreviewConfig(
                 parallelism=parallelism,
                 deadline_seconds=60.0,
@@ -75,6 +83,8 @@ class Env:
             ),
             tick_deadline_seconds=20.0,
             stale_purchasing_seconds=900.0,
+            nightly_parallelism=nightly_parallelism,
+            nightly_retry_interval_seconds=nightly_retry_interval_seconds,
             new_id=self._next_id,
         )
 
@@ -125,8 +135,9 @@ class Env:
 async def _env(**site_kwargs: object) -> Env:
     allow = bool(site_kwargs.pop("allow", True))
     parallelism = int(site_kwargs.pop("parallelism", 3))  # type: ignore[call-overload]
+    nightly_parallelism = int(site_kwargs.pop("nightly_parallelism", 10))  # type: ignore[call-overload]
     site = FakeSite(product_page=IN_STOCK, other_product_page=SOLD_OUT, **site_kwargs)  # type: ignore[arg-type]
-    env = Env(site, allow=allow, parallelism=parallelism)
+    env = Env(site, allow=allow, parallelism=parallelism, nightly_parallelism=nightly_parallelism)
     await env.account()
     await env.favorite()
     return env
@@ -369,7 +380,7 @@ async def test_the_tick_uses_one_session_and_the_nightly_check_races_several() -
     await nightly_check(nightly_env.deps)
 
     assert len(tick_env.site.clients) == 1 + 1  # 商品ページ用の共有 + 1セッション
-    assert len(nightly_env.site.clients) == 1 + 3
+    assert len(nightly_env.site.clients) == 1 + 10  # 夜間は10セッション
 
 
 # --- 取り残し -----------------------------------------------------------------
@@ -411,3 +422,34 @@ async def test_a_stale_purchasing_favorite_is_recovered_even_while_the_master_sw
     assert await env.state() == "unknown"
     assert await env.kinds() == ["unknown"]
     assert env.site.clients == []  # 商品ページの確認も購入もしない
+
+
+async def test_nightly_retries_at_a_fixed_interval_that_does_not_grow() -> None:
+    failures = {"left": 2}
+
+    async def hook(index: int, method: str, url: str) -> None:
+        if method == "POST" and url == SHIPPING_URL and failures["left"]:
+            failures["left"] -= 1
+            raise UpstreamError
+
+    env = await _env(hook=hook, nightly_parallelism=1)
+
+    await nightly_check(env.deps)
+
+    # 固定間隔（0.1 × ゆらぎ、rng=1.0 で 0.15）。attempt が増えても伸びない
+    assert [round(s, 4) for s in env.ptime.sleeps] == [0.15, 0.15]
+
+
+async def test_the_tick_retries_with_exponential_backoff() -> None:
+    failures = {"left": 2}
+
+    async def hook(index: int, method: str, url: str) -> None:
+        if method == "POST" and url == SHIPPING_URL and failures["left"]:
+            failures["left"] -= 1
+            raise UpstreamError
+
+    env = await _env(hook=hook)
+
+    await check_tick(env.deps)
+
+    assert env.ptime.sleeps == [1.0, 2.0]

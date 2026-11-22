@@ -108,6 +108,8 @@ def build_monitor_deps(
         preview_config=load_preview_config(env),
         tick_deadline_seconds=settings.tick_deadline_seconds,
         stale_purchasing_seconds=settings.stale_purchasing_seconds,
+        nightly_parallelism=settings.nightly_parallelism,
+        nightly_retry_interval_seconds=settings.nightly_retry_interval_seconds,
         new_id=new_id,
     )
     return deps, setup

@@ -12,7 +12,7 @@ from spider.application.ports import (
     UnsupportedPaymentMethod,
     UpstreamError,
 )
-from spider.application.retry import PreviewRuntime, retrying
+from spider.application.retry import PreviewRuntime, backoff_delay, retrying
 from spider.application.use_cases import SALES_HISTORY_URL, SITE
 from spider.domain.payment import PaymentMethod, get_payment_method
 from spider.domain.product import (
@@ -90,6 +90,7 @@ async def store_pickup_preview(
     payment_method_id: str,
     submit_order: bool,
     handoff: bool = False,
+    retry_delay: Callable[[int, Callable[[], float]], float] = backoff_delay,
 ) -> StorePickupResult:
     method = _validate(payment_method_id, submit_order, handoff, config)
     attempts = _Attempts()
@@ -99,7 +100,16 @@ async def store_pickup_preview(
         client = client_factory()
         try:
             return await _run_session(
-                client, parsers, runtime, attempts, deadline_at, email, password, product_id, method
+                client,
+                parsers,
+                runtime,
+                attempts,
+                deadline_at,
+                email,
+                password,
+                product_id,
+                method,
+                retry_delay,
             )
         except BaseException:
             await asyncio.shield(client.aclose())
@@ -124,7 +134,9 @@ async def store_pickup_preview(
                 ),
             )
         order = (
-            await _submit_order(reached, parsers, runtime, config.history_deadline_seconds)
+            await _submit_order(
+                reached, parsers, runtime, config.history_deadline_seconds, retry_delay
+            )
             if submit_order
             else None
         )
@@ -143,6 +155,7 @@ async def _run_session(
     password: str,
     product_id: int,
     method: PaymentMethod,
+    retry_delay: Callable[[int, Callable[[], float]], float] = backoff_delay,
 ) -> _Reached:
     async def step[T](action: Callable[[], Awaitable[T]]) -> T:
         return await retrying(
@@ -150,6 +163,7 @@ async def _run_session(
             runtime=runtime,
             deadline_at=deadline_at,
             on_attempt=attempts.add,
+            delay=retry_delay,
         )
 
     await step(lambda: client.login(email, password))
@@ -234,6 +248,7 @@ async def _submit_order(
     parsers: CheckoutParsers,
     runtime: PreviewRuntime,
     history_deadline_seconds: float,
+    retry_delay: Callable[[int, Callable[[], float]], float] = backoff_delay,
 ) -> OrderResult:
     client = reached.client
 
@@ -242,6 +257,7 @@ async def _submit_order(
             lambda: client.get(SALES_HISTORY_URL),
             runtime=runtime,
             deadline_at=runtime.now() + history_deadline_seconds,
+            delay=retry_delay,
         )
         return parsers.order_ids(html)
 

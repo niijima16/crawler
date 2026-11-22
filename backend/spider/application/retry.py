@@ -20,12 +20,22 @@ def backoff_delay(attempt: int, rng: Callable[[], float]) -> float:
     return min(MAX_DELAY_SECONDS, BASE_DELAY_SECONDS * 2.0**attempt) * (0.5 + 0.5 * rng())
 
 
+def fixed_delay(base: float) -> Callable[[int, Callable[[], float]], float]:
+    """attempt に依らない固定間隔（base の 0.5〜1.5 倍のゆらぎ）。待ち時間が伸びない。"""
+
+    def delay(attempt: int, rng: Callable[[], float]) -> float:
+        return base * (0.5 + rng())
+
+    return delay
+
+
 async def retrying[T](
     step: Callable[[], Awaitable[T]],
     *,
     runtime: PreviewRuntime,
     deadline_at: float,
     on_attempt: Callable[[], None] | None = None,
+    delay: Callable[[int, Callable[[], float]], float] = backoff_delay,
 ) -> T:
     """一時的エラー（UpstreamError）だけを、制限時間までバックオフしてリトライする。"""
     attempt = 0
@@ -35,8 +45,8 @@ async def retrying[T](
         try:
             return await step()
         except UpstreamError:
-            delay = backoff_delay(attempt, runtime.rng)
-            if runtime.now() + delay >= deadline_at:
+            wait = delay(attempt, runtime.rng)
+            if runtime.now() + wait >= deadline_at:
                 raise PreviewTimeout from None
-            await runtime.sleep(delay)
+            await runtime.sleep(wait)
             attempt += 1

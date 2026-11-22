@@ -19,7 +19,7 @@ from spider.application.ports import (
     UpstreamError,
 )
 from spider.application.preview import CheckoutParsers, PreviewConfig, store_pickup_preview
-from spider.application.retry import PreviewRuntime
+from spider.application.retry import PreviewRuntime, backoff_delay, fixed_delay
 from spider.application.use_cases import SITE, ProductNotFound
 from spider.domain.account import Notification, NotificationKind
 from spider.domain.favorite import Favorite, FavoriteState
@@ -42,6 +42,8 @@ class MonitorDeps(NamedTuple):
     preview_config: PreviewConfig
     tick_deadline_seconds: float
     stale_purchasing_seconds: float
+    nightly_parallelism: int
+    nightly_retry_interval_seconds: float
     new_id: Callable[[], str]
 
 
@@ -203,8 +205,12 @@ async def _purchase(deps: MonitorDeps, favorite: Favorite, version: int, nightly
         return
 
     config = deps.preview_config
-    if not nightly:
+    if nightly:
+        config = config._replace(parallelism=deps.nightly_parallelism)
+        retry_delay = fixed_delay(deps.nightly_retry_interval_seconds)
+    else:
         config = config._replace(parallelism=1, deadline_seconds=deps.tick_deadline_seconds)
+        retry_delay = backoff_delay
     try:
         result = await store_pickup_preview(
             client_factory=deps.client_factory,
@@ -216,6 +222,7 @@ async def _purchase(deps: MonitorDeps, favorite: Favorite, version: int, nightly
             product_id=favorite.product_id,
             payment_method_id=favorite.payment_method,
             submit_order=True,
+            retry_delay=retry_delay,
         )
     except LoginFailed:
         await _stop_account(deps, favorite, version, f"{account.label}の")

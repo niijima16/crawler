@@ -42,13 +42,24 @@ def load_preview_config(env: Mapping[str, str]) -> PreviewConfig:
     )
 
 
+NIGHTLY_MAX_PARALLELISM = 10
+
+
 class MonitorSettings(NamedTuple):
     tick_deadline_seconds: float
     stale_purchasing_seconds: float
+    nightly_parallelism: int
+    nightly_retry_interval_seconds: float
 
 
 def load_monitor_settings(env: Mapping[str, str]) -> MonitorSettings:
     return MonitorSettings(
         tick_deadline_seconds=_bounded(env, "TICK_DEADLINE_SECONDS", 20.0, 1, MAX_DEADLINE_SECONDS),
         stale_purchasing_seconds=900.0,
+        nightly_parallelism=int(
+            _bounded(env, "NIGHTLY_PARALLELISM", 10, 1, NIGHTLY_MAX_PARALLELISM)
+        ),
+        nightly_retry_interval_seconds=_bounded(
+            env, "NIGHTLY_RETRY_INTERVAL_SECONDS", 0.1, 0.05, 8
+        ),
     )

@@ -198,6 +198,7 @@ describe("running the flow", () => {
       product_id: 807736,
       payment_method: "8",
       submit_order: false,
+      handoff: false,
     });
   });
 
@@ -456,5 +457,105 @@ describe("tabs and favorites", () => {
     for (const star of screen.getAllByRole("button", { name: "お気に入りに登録" })) {
       expect(star).toBeDisabled();
     }
+  });
+});
+
+describe("browser handoff", () => {
+  const HANDOFF = {
+    cookie_name: "PHPSESSID",
+    cookie_value: "sess-xyz",
+    confirm_url: "https://www.dollyteria.com/cart/confirm",
+  };
+
+  async function toHandoffMode() {
+    await user.click(screen.getByRole("radio", { name: "ブラウザで購入" }));
+  }
+
+  function captureHandoffEvents(): CustomEvent[] {
+    const events: CustomEvent[] = [];
+    window.addEventListener("pickup-handoff", (e) => events.push(e as CustomEvent));
+    return events;
+  }
+
+  afterEach(() => {
+    delete document.documentElement.dataset.pickupExtension;
+  });
+
+  it("sends handoff=true and shows the handoff card", async () => {
+    const { calls } = api({
+      "POST /api/store-pickup-preview": () => json(200, { ...PREVIEW_RESULT, handoff: HANDOFF }),
+    });
+    await ready();
+    await searchAndSelect();
+    await toHandoffMode();
+
+    await user.click(
+      within(summary()).getByRole("button", { name: "確認画面まで進めてブラウザに引き継ぐ" }),
+    );
+
+    const card = await screen.findByRole("region", { name: "ブラウザで購入する" });
+    expect(card).toHaveTextContent("SD/豆本 S-26-11-01-584-TO-ZS");
+    const body = calls.find((c) => c.key === "POST /api/store-pickup-preview")?.body;
+    expect(body).toMatchObject({ handoff: true, submit_order: false });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("auto-opens the confirmation once when the extension is present", async () => {
+    document.documentElement.dataset.pickupExtension = "1";
+    api({
+      "POST /api/store-pickup-preview": () => json(200, { ...PREVIEW_RESULT, handoff: HANDOFF }),
+    });
+    await ready();
+    await searchAndSelect();
+    await toHandoffMode();
+    const events = captureHandoffEvents();
+
+    await user.click(
+      within(summary()).getByRole("button", { name: "確認画面まで進めてブラウザに引き継ぐ" }),
+    );
+    await screen.findByRole("region", { name: "ブラウザで購入する" });
+
+    expect(events).toHaveLength(1);
+    expect(events[0].detail).toEqual({ cookieValue: "sess-xyz" });
+  });
+
+  it("does not auto-open when the extension is missing", async () => {
+    api({
+      "POST /api/store-pickup-preview": () => json(200, { ...PREVIEW_RESULT, handoff: HANDOFF }),
+    });
+    await ready();
+    await searchAndSelect();
+    await toHandoffMode();
+    const events = captureHandoffEvents();
+
+    await user.click(
+      within(summary()).getByRole("button", { name: "確認画面まで進めてブラウザに引き継ぐ" }),
+    );
+    await screen.findByRole("region", { name: "ブラウザで購入する" });
+
+    expect(events).toHaveLength(0);
+    expect(within(summary()).getByRole("button", { name: "確認画面を開く" })).toBeDisabled();
+    expect(screen.getAllByText(/DevTools/).length).toBeGreaterThan(0);
+  });
+
+  it("re-opens the confirmation from the button (extension present)", async () => {
+    document.documentElement.dataset.pickupExtension = "1";
+    api({
+      "POST /api/store-pickup-preview": () => json(200, { ...PREVIEW_RESULT, handoff: HANDOFF }),
+    });
+    await ready();
+    await searchAndSelect();
+    await toHandoffMode();
+
+    await user.click(
+      within(summary()).getByRole("button", { name: "確認画面まで進めてブラウザに引き継ぐ" }),
+    );
+    await screen.findByRole("region", { name: "ブラウザで購入する" });
+
+    const events = captureHandoffEvents();
+    await user.click(within(summary()).getByRole("button", { name: "確認画面を開く" }));
+
+    expect(events).toHaveLength(1);
+    expect(events[0].detail).toEqual({ cookieValue: "sess-xyz" });
   });
 });

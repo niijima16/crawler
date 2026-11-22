@@ -35,6 +35,9 @@ class FakeClient:
     async def post(self, url: str, data: dict[str, str]) -> str:
         raise NotImplementedError
 
+    def get_cookie(self, name: str) -> str | None:
+        return None
+
     async def aclose(self) -> None:
         pass
 
@@ -81,6 +84,9 @@ class PagesClient:
 
     async def post(self, url: str, data: dict[str, str]) -> str:
         raise NotImplementedError
+
+    def get_cookie(self, name: str) -> str | None:
+        return None
 
     async def aclose(self) -> None:
         pass

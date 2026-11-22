@@ -3,6 +3,7 @@ from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import Any
 
+import pytest
 from cryptography.fernet import Fernet
 from fastapi.testclient import TestClient
 
@@ -66,6 +67,9 @@ class FakeClient:
 
     async def post(self, url: str, data: dict[str, str]) -> str:
         raise NotImplementedError
+
+    def get_cookie(self, name: str) -> str | None:
+        return "sess-xyz" if name == "PHPSESSID" else None
 
     async def aclose(self) -> None:
         self.closed = True
@@ -365,6 +369,7 @@ def test_store_pickup_preview_returns_the_confirmation_summary() -> None:
         },
         "attempts": 4,
         "order": None,
+        "handoff": None,
     }
     assert "secret-pw" not in response.text
 
@@ -681,3 +686,48 @@ def test_preview_with_credentials_that_cannot_be_decrypted_is_401() -> None:
         )
 
     assert response.status_code == 401
+
+
+# --- 引き継ぎ（handoff） ------------------------------------------------------
+
+
+def test_handoff_returns_the_session_without_logging_the_password(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    with _app(FakeSite().factory) as client:
+        response = client.post("/api/store-pickup-preview", json={**PREVIEW, "handoff": True})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["handoff"] == {
+        "cookie_name": "PHPSESSID",
+        "cookie_value": "sess-xyz",
+        "confirm_url": "https://www.dollyteria.com/cart/confirm",
+    }
+    assert body["order"] is None
+    assert "secret-pw" not in response.text
+    assert "secret-pw" not in capsys.readouterr().out
+
+
+def test_handoff_and_submit_order_together_is_422() -> None:
+    site = FakeSite()
+
+    with _app(site.factory, allow_order_submit=True) as client:
+        response = client.post(
+            "/api/store-pickup-preview", json={**PREVIEW, "handoff": True, "submit_order": True}
+        )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "handoff_and_submit"
+    assert site.log == []
+
+
+def test_handoff_with_the_credit_card_is_422() -> None:
+    with _app(FakeSite().factory) as client:
+        response = client.post(
+            "/api/store-pickup-preview",
+            json={**PREVIEW, "handoff": True, "payment_method": "10000028"},
+        )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "unsupported_payment_method:preview"

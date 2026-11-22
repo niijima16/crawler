@@ -129,3 +129,18 @@ async def test_adding_a_missing_product_to_the_cart_is_product_not_found() -> No
 
     with pytest.raises(ProductNotFound):
         await client.post("https://www.dollyteria.com/product/99999999", {"cart_add_1": "t"})
+
+
+async def test_get_cookie_returns_the_value_from_the_jar() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            text=_fixture("login_success.html"),
+            headers={"Set-Cookie": "PHPSESSID=abc123; Path=/"},
+        )
+
+    client = HttpSiteClient(httpx.MockTransport(handler))
+    await client.login("a@example.test", "pw")
+
+    assert client.get_cookie("PHPSESSID") == "abc123"
+    assert client.get_cookie("missing") is None

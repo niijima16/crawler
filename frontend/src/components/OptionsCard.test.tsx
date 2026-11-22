@@ -28,6 +28,30 @@ describe("OptionsCard", () => {
     expect(within(card).getByRole("radiogroup", { name: "検索方式" })).toBeInTheDocument();
   });
 
+  it("offers three execution modes", () => {
+    const { card } = setup();
+    const group = within(card).getByRole("radiogroup", { name: "実行モード" });
+
+    expect(within(group).getAllByRole("radio")).toHaveLength(3);
+    for (const name of ["確認画面まで", "注文確定まで", "ブラウザで購入"]) {
+      expect(within(group).getByRole("radio", { name })).toBeInTheDocument();
+    }
+  });
+
+  it("lets ブラウザで購入 be chosen for a non-card method", async () => {
+    const { card, onMode } = setup();
+
+    await userEvent.click(within(card).getByRole("radio", { name: "ブラウザで購入" }));
+
+    expect(onMode).toHaveBeenCalledWith("handoff");
+  });
+
+  it("does not allow ブラウザで購入 for the credit card", () => {
+    const { card } = setup({ paymentId: "10000028" });
+
+    expect(within(card).getByRole("radio", { name: "ブラウザで購入" })).toBeDisabled();
+  });
+
   it("lists all eight payment methods with store payment as the default", () => {
     const { card } = setup();
     const select = within(card).getByRole("combobox", { name: "支払方法" });

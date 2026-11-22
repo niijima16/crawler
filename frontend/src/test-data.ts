@@ -43,6 +43,7 @@ export const PREVIEW_RESULT: StorePickupResult = {
   },
   attempts: 7,
   order: null,
+  handoff: null,
 };
 
 export const ACCOUNT: Account = { id: "a1", label: "テスト用 A", email: "tester@example.com" };

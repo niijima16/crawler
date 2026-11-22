@@ -47,6 +47,7 @@ class FakeSite:
         hook: Hook | None = None,
     ) -> None:
         self.log: list[tuple[int, str, str, dict[str, str] | None]] = []
+        self.cookies: dict[str, str] = {"PHPSESSID": "sess-xyz"}
         self.clients: list[FakeClient] = []
         self.order_posts = 0
         self._confirm = html("cart_confirm.html").replace("店頭支払", confirm_label)
@@ -111,6 +112,9 @@ class FakeClient:
     async def post(self, url: str, data: dict[str, str]) -> str:
         await self._enter("POST", url, data)
         return self._site.page("POST", url)
+
+    def get_cookie(self, name: str) -> str | None:
+        return self._site.cookies.get(name)
 
     async def aclose(self) -> None:
         self.closed = True

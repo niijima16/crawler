@@ -3,6 +3,7 @@ import asyncio
 import pytest
 
 from spider.application.ports import (
+    HandoffAndSubmit,
     LoginFailed,
     NotPurchasable,
     OrderSubmitDisabled,
@@ -18,7 +19,7 @@ from spider.application.preview import (
 )
 from spider.application.retry import PreviewRuntime
 from spider.application.use_cases import SALES_HISTORY_URL, ProductNotFound
-from spider.domain.product import OrderResult, StorePickupResult
+from spider.domain.product import Handoff, OrderResult, StorePickupResult
 from spider.infrastructure.history_parser import extract_orders
 from spider.infrastructure.product_parsers import (
     extract_confirm,
@@ -400,3 +401,78 @@ async def test_history_check_after_submitting_is_retried_but_the_order_is_not() 
 
     assert site.order_posts == 1
     assert result.order == OrderResult(status="submitted", order_id="96301")
+
+
+# --- 引き継ぎ（handoff） ------------------------------------------------------
+
+
+async def _run_handoff(site: FakeSite, **kwargs: object) -> object:
+    clock = FakeTime()
+    return await store_pickup_preview(
+        client_factory=site.factory,
+        parsers=PARSERS,
+        config=PreviewConfig(
+            parallelism=int(kwargs.get("parallelism", 1)),  # type: ignore[call-overload]
+            deadline_seconds=60.0,
+            history_deadline_seconds=10.0,
+            allow_order_submit=bool(kwargs.get("allow_order_submit", False)),
+        ),
+        runtime=PreviewRuntime(sleep=clock.sleep, rng=lambda: 1.0, now=clock),
+        email="a@example.test",
+        password="secret-pw",
+        product_id=PID,
+        payment_method_id=str(kwargs.get("payment_method_id", "8")),
+        submit_order=bool(kwargs.get("submit_order", False)),
+        handoff=bool(kwargs.get("handoff", True)),
+    )
+
+
+async def test_handoff_reaches_the_confirmation_and_returns_the_session() -> None:
+    site = FakeSite()
+
+    result = await _run_handoff(site)
+
+    assert result.handoff == Handoff(  # type: ignore[attr-defined]
+        cookie_name="PHPSESSID",
+        cookie_value="sess-xyz",
+        confirm_url="https://www.dollyteria.com/cart/confirm",
+    )
+    assert result.order is None  # type: ignore[attr-defined]
+    assert result.preview.item_name == "SD16/OF:靴 U-26-07-22-192-TN-ZU"  # type: ignore[attr-defined]
+    assert site.requests("POST", CONFIRM_URL) == []  # 購入は送らない
+    assert all(c.closed for c in site.clients)
+
+
+async def test_handoff_without_a_session_cookie_is_an_upstream_error() -> None:
+    site = FakeSite()
+    site.cookies = {}
+
+    with pytest.raises(UpstreamError):
+        await _run_handoff(site)
+
+
+async def test_handoff_does_not_require_order_submission_to_be_allowed() -> None:
+    site = FakeSite()
+
+    result = await _run_handoff(site, allow_order_submit=False)
+
+    assert result.handoff is not None  # type: ignore[attr-defined]
+
+
+async def test_handoff_and_submit_order_together_send_nothing() -> None:
+    site = FakeSite()
+
+    with pytest.raises(HandoffAndSubmit):
+        await _run_handoff(site, submit_order=True, allow_order_submit=True)
+
+    assert site.clients == []
+
+
+async def test_handoff_rejects_the_credit_card_without_any_request() -> None:
+    site = FakeSite()
+
+    with pytest.raises(UnsupportedPaymentMethod) as info:
+        await _run_handoff(site, payment_method_id="10000028")
+
+    assert info.value.reason == "preview"
+    assert site.clients == []

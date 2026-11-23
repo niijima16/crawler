@@ -2,9 +2,10 @@
   "manifest_version": 3,
   "name": "Pickup Assistant Handoff",
   "version": "0.1.0",
-  "description": "Pickup Assistant の確認画面を、用意済みのセッションでブラウザに開き、同意チェックと購入ボタンを目立たせます（チェックや購入は押しません）。",
+  "description": "Pickup Assistant の確認画面を、用意済みのセッションでブラウザに開き、同意チェックと購入ボタンを目立たせます。混雑（503）のときは確認画面を自動で再読み込みします（チェックや購入は押しません）。",
   "permissions": [
-    "cookies"
+    "cookies",
+    "webNavigation"
   ],
   "host_permissions": [
     "https://www.dollyteria.com/*"

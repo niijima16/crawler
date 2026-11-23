@@ -1,3 +1,4 @@
+import asyncio
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from datetime import datetime
@@ -5,7 +6,7 @@ from typing import Annotated, NamedTuple
 
 from fastapi import APIRouter, Depends, FastAPI, Query, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, SecretStr, model_validator
 
 from spider.application import favorites as favorite_cases
@@ -47,7 +48,7 @@ from spider.domain.favorite import Favorite
 from spider.domain.keyword_favorite import DEFAULT_GENRE_ID, Genre, KeywordFavorite
 from spider.domain.order import Order
 from spider.domain.payment import DEFAULT_PAYMENT_METHOD_ID, PAYMENT_METHODS, PaymentMethod
-from spider.domain.product import ProductSummary, StorePickupResult
+from spider.domain.product import PreviewStep, ProductSummary, StorePickupResult
 
 LIST_URL = "https://www.dollyteria.com/product-list/22?view=new"
 
@@ -153,6 +154,22 @@ class KeywordFavoritePatch(BaseModel):
 
 def _error(status: int, message: str) -> JSONResponse:
     return JSONResponse(status_code=status, content={"detail": message})
+
+
+_STREAM_REASON: dict[type[Exception], str] = {
+    ProductNotFound: "product_not_found",
+    NotPurchasable: "not_purchasable",
+    PaymentMethodUnavailable: "payment_method_unavailable",
+    UnsupportedPaymentMethod: "unsupported_payment_method",
+    PreviewTimeout: "timeout",
+    UpstreamError: "upstream_error",
+    LoginFailed: "login_failed",
+}
+
+
+def _json_reason(error: Exception) -> str:
+    reason = _STREAM_REASON.get(type(error), "error")
+    return f'{{"reason":"{reason}"}}'
 
 
 def create_app(deps: Dependencies) -> FastAPI:
@@ -265,6 +282,69 @@ def create_app(deps: Dependencies) -> FastAPI:
             )
         except ProductNotFound:
             return _error(404, "product not found")
+
+    @router.get("/store-pickup-preview/stream")
+    async def preview_stream(
+        account_id: str, product_id: int, payment_method: str
+    ) -> StreamingResponse:
+        # 引き継ぎ（確認画面まで）の進捗を SSE で逐次流す。
+        # 資格情報の解決はここで行う（失敗は通常のHTTPエラーになる）。
+        email, password = await credentials_of(
+            PreviewRequest(
+                account_id=account_id, product_id=product_id, payment_method=payment_method
+            )
+        )
+        queue: asyncio.Queue[tuple[str, str]] = asyncio.Queue()
+
+        def on_step(step: PreviewStep) -> None:
+            queue.put_nowait(("step", step.model_dump_json()))
+
+        async def run() -> None:
+            try:
+                result = await store_pickup_preview(
+                    client_factory=deps.client_factory,
+                    parsers=deps.checkout_parsers,
+                    config=deps.preview_config._replace(parallelism=1),
+                    runtime=deps.runtime,
+                    email=email,
+                    password=password,
+                    product_id=product_id,
+                    payment_method_id=payment_method,
+                    submit_order=False,
+                    handoff=True,
+                    on_step=on_step,
+                )
+                handoff = result.handoff
+                assert handoff is not None  # handoff=True なので必ず入る
+                queue.put_nowait(("done", handoff.model_dump_json()))
+            except (
+                ProductNotFound,
+                NotPurchasable,
+                PaymentMethodUnavailable,
+                UnsupportedPaymentMethod,
+                PreviewTimeout,
+                UpstreamError,
+                LoginFailed,
+            ) as error:
+                queue.put_nowait(("error", _json_reason(error)))
+            except Exception:  # noqa: BLE001 - 想定外も必ずストリームを閉じる
+                queue.put_nowait(("error", '{"reason":"error"}'))
+            finally:
+                queue.put_nowait(("__end__", ""))
+
+        task = asyncio.create_task(run())
+
+        async def events() -> AsyncIterator[str]:
+            try:
+                while True:
+                    event, data = await queue.get()
+                    if event == "__end__":
+                        break
+                    yield f"event: {event}\ndata: {data}\n\n"
+            finally:
+                task.cancel()
+
+        return StreamingResponse(events(), media_type="text/event-stream")
 
     cases = deps.favorite_deps
 

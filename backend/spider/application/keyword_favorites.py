@@ -17,7 +17,7 @@ from spider.domain.keyword_favorite import KeywordFavorite, get_genre
 from spider.domain.payment import get_payment_method
 from spider.domain.product import ProductSummary
 
-MAX_KEYWORD_FAVORITES = 5
+MAX_KEYWORD_FAVORITES = 10
 
 
 class KeywordFavoriteDeps(NamedTuple):

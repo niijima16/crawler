@@ -22,7 +22,7 @@ const STATE_LABEL: Record<FavoriteState, { text: string; className: string }> = 
   stopped: { text: "停止", className: "stop" },
 };
 
-const MAX_KEYWORD = 5;
+const MAX_KEYWORD = 10;
 
 const JST_TIME = new Intl.DateTimeFormat("ja-JP", {
   hour: "2-digit",

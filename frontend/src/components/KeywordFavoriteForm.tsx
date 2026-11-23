@@ -40,7 +40,7 @@ export function KeywordFavoriteForm({ accountId, genres, methods, onAdded }: Pro
       const kind = caught instanceof ApiError ? caught.kind : "network";
       setError(
         kind === "limit"
-          ? "キーワードお気に入りは 5 件までです。解除してから登録してください。"
+          ? "キーワードお気に入りは 10 件までです。解除してから登録してください。"
           : favoriteError(kind),
       );
     }

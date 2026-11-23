@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { ApiError, api } from "./api";
 import { AccountCard } from "./components/AccountCard";
 import { AutoPurchaseTab } from "./components/AutoPurchaseTab";
 import { FavoritesTab } from "./components/FavoritesTab";
-import { HandoffCard } from "./components/HandoffCard";
+import { HandoffProgress } from "./components/HandoffProgress";
 import { Header } from "./components/Header";
 import { type Mode, OptionsCard, type SearchMode } from "./components/OptionsCard";
 import { OrderConfirmDialog } from "./components/OrderConfirmDialog";
@@ -42,6 +42,7 @@ export function App() {
   const [running, setRunning] = useState(false);
   const [outcome, setOutcome] = useState<Outcome | null>(null);
   const [confirming, setConfirming] = useState(false);
+  const [handoff, setHandoff] = useState<{ productId: number; paymentMethod: string } | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [favorites, setFavorites] = useState<Favorite[]>([]);
   const [genres, setGenres] = useState<Genre[]>([]);
@@ -86,16 +87,6 @@ export function App() {
     const timer = setInterval(loadStatus, POLL_MS);
     return () => clearInterval(timer);
   }, [loadStatus]);
-
-  // 引き継ぎが完了したら、拡張があれば確認画面を別タブに自動で開く（1回だけ）。
-  const openedHandoffRef = useRef<string | null>(null);
-  useEffect(() => {
-    const handoff = outcome?.status === "done" ? outcome.result.handoff : null;
-    if (handoff && isExtensionInstalled() && openedHandoffRef.current !== handoff.cookie_value) {
-      openedHandoffRef.current = handoff.cookie_value;
-      openConfirmation(handoff.cookie_value);
-    }
-  }, [outcome]);
 
   const locked = accountId === null;
   const account = accounts?.find((a) => a.id === accountId) ?? null;
@@ -149,7 +140,7 @@ export function App() {
         product_id: selected.product_id,
         payment_method: paymentId,
         submit_order: submitOrder,
-        handoff: mode === "handoff",
+        handoff: false,
       });
       setOutcome({ status: "done", result });
     } catch (error) {
@@ -161,26 +152,17 @@ export function App() {
     }
   }
 
+  // 引き継ぎ（確認画面まで）を開始する。進捗は HandoffProgress が SSE で表示する。
+  const startHandoff = useCallback((productId: number, paymentMethod: string) => {
+    setHandoff({ productId, paymentMethod });
+  }, []);
+
   const openArrival = useCallback(
-    async (note: AppNotification) => {
-      if (accountId === null || note.product_id === null) return;
-      try {
-        const result = await api.runPreview({
-          account_id: accountId,
-          product_id: note.product_id,
-          payment_method: note.payment_method ?? DEFAULT_PAYMENT_ID,
-          submit_order: false,
-          handoff: true,
-        });
-        if (result.handoff && isExtensionInstalled()) {
-          openConfirmation(result.handoff.cookie_value);
-        }
-      } catch {
-        // 売り切れ等は結果カードではなく通知側で扱う（ここでは握りつぶさず再取得に任せる）
-        loadStatus();
-      }
+    (note: AppNotification) => {
+      if (note.product_id === null) return;
+      startHandoff(note.product_id, note.payment_method ?? DEFAULT_PAYMENT_ID);
     },
-    [accountId, loadStatus],
+    [startHandoff],
   );
 
   const step = locked ? 1 : outcome ? 5 : selected ? 4 : 3;
@@ -237,24 +219,15 @@ export function App() {
                 account={account ? maskEmail(account.email) : null}
                 running={running}
                 locked={locked}
-                onRun={() => (mode === "order" ? setConfirming(true) : execute(false))}
-                handoffReady={outcome?.status === "done" && outcome.result.handoff !== null}
-                canOpenHandoff={isExtensionInstalled()}
-                onOpenHandoff={() =>
-                  outcome?.status === "done" &&
-                  outcome.result.handoff &&
-                  openConfirmation(outcome.result.handoff.cookie_value)
+                onRun={() =>
+                  mode === "order"
+                    ? setConfirming(true)
+                    : mode === "handoff" && selected
+                      ? startHandoff(selected.product_id, paymentId)
+                      : execute(false)
                 }
               />
-              {outcome?.status === "done" && outcome.result.handoff ? (
-                <HandoffCard
-                  preview={outcome.result.preview}
-                  handoff={outcome.result.handoff}
-                  extensionInstalled={isExtensionInstalled()}
-                />
-              ) : (
-                outcome && <ResultCard outcome={outcome} />
-              )}
+              {outcome && <ResultCard outcome={outcome} />}
             </div>
           </div>
         </>
@@ -295,6 +268,20 @@ export function App() {
           onConfirm={() => execute(true)}
           onCancel={() => setConfirming(false)}
         />
+      )}
+      {handoff && accountId !== null && (
+        <div className="backdrop">
+          <HandoffProgress
+            accountId={accountId}
+            productId={handoff.productId}
+            paymentMethod={handoff.paymentMethod}
+            extensionInstalled={isExtensionInstalled()}
+            onReady={(h) => {
+              if (isExtensionInstalled()) openConfirmation(h.cookie_value);
+            }}
+            onClose={() => setHandoff(null)}
+          />
+        </div>
       )}
       <footer className="foot">Pickup Assistant — 購入の確定はサイトの画面で行います</footer>
     </div>

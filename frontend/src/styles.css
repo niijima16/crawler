@@ -835,3 +835,40 @@ ol.steps li {
   background: var(--warn-bg);
   color: var(--warn);
 }
+
+/* 引き継ぎ進捗（HandoffProgress） */
+.prog {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+ul.prog li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--info-bg);
+}
+.prog li.done {
+  background: var(--ok-bg);
+}
+.prog li.active {
+  background: var(--warn-bg);
+}
+.prog li.wait,
+.prog li.stopped {
+  background: transparent;
+  color: var(--muted);
+}
+.prog .ico {
+  width: 18px;
+  text-align: center;
+}
+.prog .retry {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--warn);
+}

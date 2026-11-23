@@ -10,9 +10,6 @@ type Props = {
   running: boolean;
   locked: boolean;
   onRun: () => void;
-  handoffReady: boolean;
-  canOpenHandoff: boolean;
-  onOpenHandoff: () => void;
 };
 
 export function OrderSummaryCard({
@@ -23,14 +20,9 @@ export function OrderSummaryCard({
   running,
   locked,
   onRun,
-  handoffReady,
-  canOpenHandoff,
-  onOpenHandoff,
 }: Props) {
-  const openMode = mode === "handoff" && handoffReady;
-  const label = openMode
-    ? "確認画面を開く"
-    : mode === "order"
+  const label =
+    mode === "order"
       ? "注文確定まで実行する"
       : mode === "handoff"
         ? "確認画面まで進めてブラウザに引き継ぐ"
@@ -79,8 +71,8 @@ export function OrderSummaryCard({
       <button
         type="button"
         className={`block${mode === "order" ? " order" : ""}`}
-        disabled={openMode ? !canOpenHandoff : locked || running || product === null}
-        onClick={openMode ? onOpenHandoff : onRun}
+        disabled={locked || running || product === null}
+        onClick={onRun}
       >
         {label}
       </button>

@@ -1,0 +1,99 @@
+import { useEffect, useRef, useState } from "react";
+import { openHandoffStream } from "../api";
+import type { Handoff, PreviewStepName } from "../types";
+
+const STEPS: { name: PreviewStepName; label: string }[] = [
+  { name: "login", label: "ログイン" },
+  { name: "cart", label: "カートに追加" },
+  { name: "shipping", label: "配送（店頭受取）を選択" },
+  { name: "confirm", label: "確認画面を生成" },
+  { name: "handoff", label: "引き継ぎを準備" },
+];
+
+type StepState = { status: "active" | "done"; attempt: number };
+
+type Props = {
+  accountId: string;
+  productId: number;
+  paymentMethod: string;
+  extensionInstalled: boolean;
+  onReady: (handoff: Handoff) => void;
+  onClose: () => void;
+};
+
+export function HandoffProgress({
+  accountId,
+  productId,
+  paymentMethod,
+  extensionInstalled,
+  onReady,
+  onClose,
+}: Props) {
+  const [states, setStates] = useState<Partial<Record<PreviewStepName, StepState>>>({});
+  const [error, setError] = useState<string | null>(null);
+  const [finished, setFinished] = useState(false);
+  const onReadyRef = useRef(onReady);
+  onReadyRef.current = onReady;
+
+  useEffect(() => {
+    const source = openHandoffStream(
+      { account_id: accountId, product_id: productId, payment_method: paymentMethod },
+      {
+        onStep: (step) =>
+          setStates((prev) => ({
+            ...prev,
+            [step.step]: {
+              status: step.status === "done" ? "done" : "active",
+              attempt: step.attempt,
+            },
+          })),
+        onDone: (handoff) => {
+          setFinished(true);
+          onReadyRef.current(handoff);
+        },
+        onError: (reason) => setError(reason),
+      },
+    );
+    return () => source.close();
+  }, [accountId, productId, paymentMethod]);
+
+  return (
+    <section className="card" aria-label="確認画面への引き継ぎ">
+      <div className="ch">
+        <span className="step">▶</span>
+        <h2>確認画面への引き継ぎ</h2>
+      </div>
+      <ul className="prog">
+        {STEPS.map(({ name, label }) => {
+          const state = states[name];
+          const cls = state?.status ?? (error ? "stopped" : "wait");
+          const icon = state?.status === "done" ? "✔" : state?.status === "active" ? "⌛" : "·";
+          return (
+            <li key={name} className={cls}>
+              <span className="ico">{icon}</span> {label}
+              {state?.status === "active" && state.attempt > 1 && (
+                <span className="retry">再試行 {state.attempt}</span>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+      {error ? (
+        <div className="banner err">
+          引き継ぎに失敗しました（{error}）。もう一度お試しください。
+        </div>
+      ) : finished ? (
+        <div className="banner ok">
+          {extensionInstalled
+            ? "確認画面をブラウザで開きました。内容を確認し、同意のうえ「購入する」を押してください。"
+            : "引き継ぎの準備ができました。拡張機能を入れると確認画面を自動で開けます。"}
+        </div>
+      ) : null}
+      <div className="row" style={{ marginTop: "10px" }}>
+        <button type="button" onClick={onClose}>
+          閉じる
+        </button>
+      </div>
+    </section>
+  );
+}

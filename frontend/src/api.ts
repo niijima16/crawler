@@ -3,9 +3,11 @@ import type {
   AutoStatus,
   Favorite,
   Genre,
+  Handoff,
   KeywordFavorite,
   NotificationList,
   PaymentMethod,
+  PreviewStep,
   Product,
   StorePickupResult,
 } from "./types";
@@ -93,6 +95,48 @@ export type PreviewRequest = {
   submit_order: boolean;
   handoff: boolean;
 };
+
+export type HandoffStreamParams = {
+  account_id: string;
+  product_id: number;
+  payment_method: string;
+};
+
+export type HandoffStreamHandlers = {
+  onStep: (step: PreviewStep) => void;
+  onDone: (handoff: Handoff) => void;
+  onError: (reason: string) => void;
+};
+
+/** 引き継ぎ（確認画面まで）の進捗を SSE で購読する。返り値を close() すると中断できる。 */
+export function openHandoffStream(
+  params: HandoffStreamParams,
+  handlers: HandoffStreamHandlers,
+): EventSource {
+  const query = new URLSearchParams({
+    account_id: params.account_id,
+    product_id: String(params.product_id),
+    payment_method: params.payment_method,
+  });
+  const source = new EventSource(`/api/store-pickup-preview/stream?${query}`);
+  source.addEventListener("step", (event) => {
+    handlers.onStep(JSON.parse((event as MessageEvent).data) as PreviewStep);
+  });
+  source.addEventListener("done", (event) => {
+    handlers.onDone(JSON.parse((event as MessageEvent).data) as Handoff);
+    source.close();
+  });
+  source.addEventListener("error", (event) => {
+    const data = (event as MessageEvent).data;
+    if (typeof data === "string" && data.length > 0) {
+      handlers.onError((JSON.parse(data) as { reason: string }).reason);
+    } else {
+      handlers.onError("network");
+    }
+    source.close();
+  });
+  return source;
+}
 
 export type FavoritePatch = {
   payment_method?: string;

@@ -27,6 +27,14 @@ export type Handoff = {
   confirm_url: string;
 };
 
+export type PreviewStepName = "login" | "cart" | "shipping" | "confirm" | "handoff";
+
+export type PreviewStep = {
+  step: PreviewStepName;
+  status: "started" | "done";
+  attempt: number;
+};
+
 export type StorePickupResult = {
   preview: CheckoutPreview;
   attempts: number;

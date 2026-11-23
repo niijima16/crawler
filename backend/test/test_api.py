@@ -816,7 +816,11 @@ def test_keyword_favorite_errors() -> None:
             == 404
         )
         unknown_genre = client.post("/api/keyword-favorites", json={**base, "category_id": 999999})
-        assert unknown_genre.status_code == 422
+        assert (unknown_genre.status_code, unknown_genre.json()["detail"]) == (422, "unknown_genre")
+        # 未知の支払方法は、ジャンル検証とは別のエラーになる（unknown_genre にならない）
+        unknown_pay = client.post("/api/keyword-favorites", json={**base, "payment_method": "nope"})
+        assert unknown_pay.status_code == 422
+        assert unknown_pay.json()["detail"] == "unsupported_payment_method:unknown"
         card = client.post("/api/keyword-favorites", json={**base, "payment_method": "10000028"})
         assert card.status_code == 422
         assert client.post("/api/keyword-favorites", json=base).status_code == 200

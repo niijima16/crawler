@@ -33,7 +33,10 @@ class KeywordFavoriteDeps(NamedTuple):
 
 def _check_payment_method(payment_method_id: str) -> None:
     """確認画面まで進める支払方法だけを許可する（クレジットカードは不可）。"""
-    method = get_payment_method(payment_method_id)  # 未知は KeyError
+    try:
+        method = get_payment_method(payment_method_id)
+    except KeyError:
+        raise UnsupportedPaymentMethod("unknown") from None
     if not method.preview_supported:
         raise UnsupportedPaymentMethod("preview")
 

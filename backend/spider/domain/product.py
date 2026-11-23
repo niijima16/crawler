@@ -56,11 +56,15 @@ class StorePickupResult(BaseModel):
     handoff: Handoff | None = None
 
 
+PreviewStepName = Literal["login", "cart", "shipping", "confirm", "handoff"]
+PreviewStepStatus = Literal["started", "done"]
+
+
 class PreviewStep(BaseModel):
     """引き継ぎの進捗（ステップの開始・完了）。attempt は再試行回数（1始まり）。"""
 
     model_config = ConfigDict(frozen=True)
 
-    step: Literal["login", "cart", "shipping", "confirm", "handoff"]
-    status: Literal["started", "done"]
+    step: PreviewStepName
+    status: PreviewStepStatus
     attempt: int = 0

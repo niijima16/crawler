@@ -21,10 +21,13 @@ from spider.domain.product import (
     OrderForm,
     OrderResult,
     PreviewStep,
+    PreviewStepName,
+    PreviewStepStatus,
     StorePickupResult,
 )
 
 type OnStep = Callable[[PreviewStep], None]
+type Emit = Callable[[PreviewStepName, PreviewStepStatus, int], None]
 
 MAX_PARALLELISM = 5
 CONFIRM_URL = f"{SITE}/cart/confirm"
@@ -100,9 +103,9 @@ async def store_pickup_preview(
     attempts = _Attempts()
     deadline_at = runtime.now() + config.deadline_seconds
 
-    def emit(step: str, status: str, attempt: int = 0) -> None:
+    def emit(step: PreviewStepName, status: PreviewStepStatus, attempt: int = 0) -> None:
         if on_step is not None:
-            on_step(PreviewStep(step=step, status=status, attempt=attempt))  # type: ignore[arg-type]
+            on_step(PreviewStep(step=step, status=status, attempt=attempt))
 
     async def session() -> _Reached:
         client = client_factory()
@@ -167,9 +170,9 @@ async def _run_session(
     product_id: int,
     method: PaymentMethod,
     retry_delay: Callable[[int, Callable[[], float]], float] = backoff_delay,
-    emit: Callable[[str, str, int], None] = lambda step, status, attempt: None,
+    emit: Emit = lambda step, status, attempt: None,
 ) -> _Reached:
-    async def step[T](label: str, action: Callable[[], Awaitable[T]]) -> T:
+    async def step[T](label: PreviewStepName, action: Callable[[], Awaitable[T]]) -> T:
         tries = _Attempts()
 
         def on_attempt() -> None:

@@ -152,7 +152,9 @@ class SettingsRepository(Protocol):
 
 
 class KeywordFavoriteRepository(Protocol):
-    async def add(self, favorite: KeywordFavorite) -> None: ...
+    async def add(
+        self, favorite: KeywordFavorite, seen_product_ids: set[int] | None = None
+    ) -> None: ...
 
     async def get(self, favorite_id: str) -> KeywordFavorite | None: ...
 
@@ -169,10 +171,6 @@ class KeywordFavoriteRepository(Protocol):
     async def delete(self, favorite_id: str) -> None: ...
 
     async def delete_for_account(self, account_id: str) -> None: ...
-
-    async def mark_seen(self, favorite_id: str, product_ids: set[int]) -> None:
-        """商品IDの集合を seen に（無条件で）追加する。登録時の基準の記録に使う。"""
-        ...
 
     async def claim_product(self, favorite_id: str, product_id: int) -> bool:
         """商品IDを seen に条件付きで追加する。追加できたら True（初めて見た）。"""

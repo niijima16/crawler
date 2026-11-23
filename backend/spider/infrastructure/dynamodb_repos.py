@@ -354,10 +354,15 @@ class DynamoKeywordFavorites:
             created_at=datetime.fromisoformat(i["created_at"]),
         )
 
-    async def add(self, favorite: KeywordFavorite) -> None:
+    async def add(
+        self, favorite: KeywordFavorite, seen_product_ids: set[int] | None = None
+    ) -> None:
+        item = self._to_item(favorite)
+        if seen_product_ids:
+            item["seen_product_ids"] = set(seen_product_ids)
         await asyncio.to_thread(
             self._table.put_item,
-            Item=self._to_item(favorite),
+            Item=item,
             ConditionExpression=Attr("id").not_exists(),
         )
 
@@ -420,16 +425,6 @@ class DynamoKeywordFavorites:
     async def delete_for_account(self, account_id: str) -> None:
         for favorite in await self.list_all(account_id):
             await self.delete(favorite.id)
-
-    async def mark_seen(self, favorite_id: str, product_ids: set[int]) -> None:
-        if not product_ids:
-            return
-        await asyncio.to_thread(
-            self._table.update_item,
-            Key={"id": favorite_id},
-            UpdateExpression="ADD seen_product_ids :p",
-            ExpressionAttributeValues={":p": set(product_ids)},
-        )
 
     async def claim_product(self, favorite_id: str, product_id: int) -> bool:
         if not favorite_id:

@@ -47,8 +47,8 @@ class MonitorDeps(NamedTuple):
     stale_purchasing_seconds: float
     nightly_parallelism: int
     nightly_retry_interval_seconds: float
-    keyword_favorites: "KeywordFavoriteRepository"
-    extract_search_results: Callable[[str, set[int]], list["ProductSummary"]]
+    keyword_favorites: KeywordFavoriteRepository
+    extract_search_results: Callable[[str, set[int]], list[ProductSummary]]
     extract_product_ids: Callable[[str], set[int]]
     new_id: Callable[[], str]
 
@@ -346,7 +346,7 @@ async def _check_keyword_favorites(deps: MonitorDeps, nightly: bool) -> None:
 
 async def _notify_arrival(
     deps: MonitorDeps,
-    favorite: "KeywordFavorite",
+    favorite: KeywordFavorite,
     kind: NotificationKind,
     message: str,
     product: ProductSummary,

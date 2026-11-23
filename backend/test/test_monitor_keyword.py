@@ -141,9 +141,7 @@ async def _add_kf(
         new_arrival_count=0,
         created_at=NOW,
     )
-    await repos.keyword_favorites.add(fav)
-    if seen:
-        await repos.keyword_favorites.mark_seen("k1", seen)
+    await repos.keyword_favorites.add(fav, seen)
     return fav
 
 

@@ -172,3 +172,23 @@ async def test_list_update_toggle_delete() -> None:
     assert await list_keyword_favorites(deps, "a1") == []
     with pytest.raises(EntityNotFound):
         await delete_keyword_favorite(deps, fav.id)
+
+
+async def test_register_stores_the_baseline_in_the_add_so_there_is_no_window() -> None:
+    deps, repos, _ = _deps()
+    await _account(repos)
+    adds: list[tuple[bool, set[int]]] = []
+
+    original_add = repos.keyword_favorites.add
+
+    async def recording_add(favorite, seen_product_ids=None):  # type: ignore[no-untyped-def]
+        adds.append((favorite.enabled, set(seen_product_ids or set())))
+        await original_add(favorite, seen_product_ids)
+
+    repos.keyword_favorites.add = recording_add  # type: ignore[method-assign]
+
+    await register_keyword_favorite(deps, "a1", "豆本", 22, "8", None)
+
+    # add は1回だけ、baseline（現在の商品ID）を伴って呼ばれる（enabled のまま空で作る窓が無い）
+    assert len(adds) == 1
+    assert adds[0][1] == {775386, 810296, 810297}

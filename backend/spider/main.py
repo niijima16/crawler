@@ -49,6 +49,7 @@ app = create_app(
         favorite_deps=FavoriteDeps(
             accounts=_store.accounts,
             favorites=_store.favorites,
+            keyword_favorites=_store.keyword_favorites,
             notifications=_store.notifications,
             settings=_store.settings,
             secret_box=_store.secret_box,

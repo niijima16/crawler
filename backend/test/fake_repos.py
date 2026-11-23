@@ -140,12 +140,14 @@ class MemoryKeywordFavorites:
         self._seen: dict[str, set[int]] = {}
         self._writes = writes
 
-    async def add(self, favorite: KeywordFavorite) -> None:
+    async def add(
+        self, favorite: KeywordFavorite, seen_product_ids: set[int] | None = None
+    ) -> None:
         if favorite.id in self._items:
             raise KeyError(favorite.id)
         self._writes.count += 1
         self._items[favorite.id] = favorite
-        self._seen.setdefault(favorite.id, set())
+        self._seen[favorite.id] = set(seen_product_ids or set())
 
     async def get(self, favorite_id: str) -> KeywordFavorite | None:
         return self._items.get(favorite_id)
@@ -184,11 +186,6 @@ class MemoryKeywordFavorites:
     async def delete_for_account(self, account_id: str) -> None:
         for fid in [f.id for f in self._items.values() if f.account_id == account_id]:
             await self.delete(fid)
-
-    async def mark_seen(self, favorite_id: str, product_ids: set[int]) -> None:
-        if product_ids:
-            self._writes.count += 1
-            self._seen.setdefault(favorite_id, set()).update(product_ids)
 
     async def claim_product(self, favorite_id: str, product_id: int) -> bool:
         seen = self._seen.setdefault(favorite_id, set())

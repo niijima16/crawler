@@ -60,6 +60,7 @@ def _deps(site: FakeSite | None = None) -> tuple[FavoriteDeps, MemoryRepos, Fake
     deps = FavoriteDeps(
         accounts=repos.accounts,
         favorites=repos.favorites,
+        keyword_favorites=repos.keyword_favorites,
         notifications=repos.notifications,
         settings=repos.settings,
         secret_box=FernetSecretBox(Fernet.generate_key().decode()),
@@ -124,6 +125,33 @@ async def test_deleting_an_account_deletes_its_favorites() -> None:
     assert await repos.favorites.list_all() == []
     with pytest.raises(EntityNotFound):
         await delete_account(deps, account.id)
+
+
+async def test_deleting_an_account_also_deletes_its_keyword_favorites() -> None:
+    from datetime import UTC, datetime  # noqa: PLC0415
+
+    from spider.domain.keyword_favorite import KeywordFavorite  # noqa: PLC0415
+
+    deps, repos, _, _ = _deps()
+    account = await register_account(deps, "A", "a@example.test", "pw")
+    await repos.keyword_favorites.add(
+        KeywordFavorite(
+            id="k1",
+            account_id=account.id,
+            keyword="豆本",
+            category_id=22,
+            category_label="SuperDollfie > 本体",
+            payment_method="8",
+            price_cap_yen=None,
+            enabled=True,
+            new_arrival_count=0,
+            created_at=datetime(2026, 11, 23, tzinfo=UTC),
+        )
+    )
+
+    await delete_account(deps, account.id)
+
+    assert await repos.keyword_favorites.list_all() == []
 
 
 # --- お気に入り ---------------------------------------------------------------

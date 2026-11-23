@@ -12,6 +12,7 @@ from spider.application.ports import (
     FavoriteLimitReached,
     FavoriteRepository,
     InvalidTransition,
+    KeywordFavoriteRepository,
     NotificationRepository,
     SecretBox,
     SettingsRepository,
@@ -32,6 +33,7 @@ MAX_FAVORITES_PER_ACCOUNT = 20
 class FavoriteDeps(NamedTuple):
     accounts: AccountRepository
     favorites: FavoriteRepository
+    keyword_favorites: KeywordFavoriteRepository
     notifications: NotificationRepository
     settings: SettingsRepository
     secret_box: SecretBox
@@ -81,6 +83,7 @@ async def delete_account(deps: FavoriteDeps, account_id: str) -> None:
     if await deps.accounts.get_with_secret(account_id) is None:
         raise EntityNotFound
     await deps.favorites.delete_for_account(account_id)
+    await deps.keyword_favorites.delete_for_account(account_id)
     await deps.accounts.delete(account_id)
 
 

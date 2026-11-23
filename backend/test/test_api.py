@@ -154,6 +154,7 @@ def _favorite_deps(factory: Any, clock: FakeTime, repos: MemoryRepos) -> Favorit
     return FavoriteDeps(
         accounts=repos.accounts,
         favorites=repos.favorites,
+        keyword_favorites=repos.keyword_favorites,
         notifications=repos.notifications,
         settings=repos.settings,
         secret_box=FernetSecretBox(Fernet.generate_key().decode()),

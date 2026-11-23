@@ -85,8 +85,8 @@ async def register_keyword_favorite(
         new_arrival_count=0,
         created_at=deps.clock.now(),
     )
-    await deps.keyword_favorites.add(favorite)
-    await deps.keyword_favorites.mark_seen(favorite.id, baseline)
+    # baseline を伴って1回で作る（作成～基準記録の窓を作らない）
+    await deps.keyword_favorites.add(favorite, baseline)
     return favorite
 
 

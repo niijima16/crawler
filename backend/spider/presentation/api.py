@@ -317,15 +317,7 @@ def create_app(deps: Dependencies) -> FastAPI:
                 handoff = result.handoff
                 assert handoff is not None  # handoff=True なので必ず入る
                 queue.put_nowait(("done", handoff.model_dump_json()))
-            except (
-                ProductNotFound,
-                NotPurchasable,
-                PaymentMethodUnavailable,
-                UnsupportedPaymentMethod,
-                PreviewTimeout,
-                UpstreamError,
-                LoginFailed,
-            ) as error:
+            except tuple(_STREAM_REASON) as error:
                 queue.put_nowait(("error", _json_reason(error)))
             except Exception:  # noqa: BLE001 - 想定外も必ずストリームを閉じる
                 queue.put_nowait(("error", '{"reason":"error"}'))

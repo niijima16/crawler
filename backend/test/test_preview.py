@@ -20,7 +20,7 @@ from spider.application.preview import (
 )
 from spider.application.retry import PreviewRuntime, backoff_delay, fixed_delay
 from spider.application.use_cases import SALES_HISTORY_URL, ProductNotFound
-from spider.domain.product import Handoff, OrderResult, StorePickupResult
+from spider.domain.product import Handoff, OrderResult, PreviewStep, StorePickupResult
 from spider.infrastructure.history_parser import extract_orders
 from spider.infrastructure.product_parsers import (
     extract_confirm,
@@ -62,6 +62,8 @@ async def _run(
     deadline_seconds: float = 60.0,
     clock: FakeTime | None = None,
     retry_delay: Callable[[int, Callable[[], float]], float] | None = None,
+    handoff: bool = False,
+    on_step: Callable[[PreviewStep], None] | None = None,
 ) -> StorePickupResult:
     clock = clock or FakeTime()
     return await store_pickup_preview(
@@ -80,6 +82,8 @@ async def _run(
         payment_method_id=payment_method_id,
         submit_order=submit_order,
         retry_delay=retry_delay if retry_delay is not None else backoff_delay,
+        handoff=handoff,
+        on_step=on_step,
     )
 
 
@@ -513,3 +517,41 @@ async def test_the_default_retry_delay_grows_with_backoff() -> None:
 
     # 既定は指数バックオフ（rng=1.0 で 1.0, 2.0）
     assert clock.sleeps == [1.0, 2.0]
+
+
+async def test_on_step_reports_each_stage_in_order_for_handoff() -> None:
+    site = FakeSite()
+    steps: list[tuple[str, str]] = []
+
+    await _run(site, handoff=True, on_step=lambda s: steps.append((s.step, s.status)))
+
+    assert steps == [
+        ("login", "started"),
+        ("login", "done"),
+        ("cart", "started"),
+        ("cart", "done"),
+        ("shipping", "started"),
+        ("shipping", "done"),
+        ("confirm", "started"),
+        ("confirm", "done"),
+        ("handoff", "started"),
+        ("handoff", "done"),
+    ]
+
+
+async def test_on_step_reports_retries_with_the_attempt_number() -> None:
+    calls = {"n": 0}
+
+    async def hook(index: int, method: str, url: str) -> None:
+        if url == "login":
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise UpstreamError
+
+    site = FakeSite(hook=hook)
+    steps: list[tuple[str, str, int]] = []
+
+    await _run(site, handoff=True, on_step=lambda s: steps.append((s.step, s.status, s.attempt)))
+
+    login = [s for s in steps if s[0] == "login"]
+    assert login == [("login", "started", 1), ("login", "started", 2), ("login", "done", 2)]

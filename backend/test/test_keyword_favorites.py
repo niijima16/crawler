@@ -134,7 +134,8 @@ async def test_register_allows_methods_that_reach_confirmation(method: str) -> N
     assert fav.payment_method == method
 
 
-async def test_the_limit_is_five_per_account() -> None:
+async def test_the_limit_is_ten_per_account() -> None:
+    assert MAX_KEYWORD_FAVORITES == 10
     deps, repos, _ = _deps()
     await _account(repos)
     for n in range(MAX_KEYWORD_FAVORITES):

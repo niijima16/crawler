@@ -79,6 +79,6 @@ describe("KeywordFavoriteForm", () => {
     await user.type(within(form).getByLabelText("キーワード"), "豆本");
     await user.click(within(form).getByRole("button", { name: "登録する" }));
 
-    expect(await within(form).findByText(/5 件/)).toBeInTheDocument();
+    expect(await within(form).findByText(/10 件/)).toBeInTheDocument();
   });
 });

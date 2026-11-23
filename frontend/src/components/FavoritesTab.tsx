@@ -57,6 +57,7 @@ export function FavoritesTab({
 
   const label = (id: string) => methods.find((m) => m.id === id)?.label ?? id;
   const watching = favorites.filter((f) => f.state === "watching").length;
+  const keywordWatching = keywordFavorites.filter((f) => f.enabled).length;
 
   async function run(action: () => Promise<unknown>) {
     setError(null);
@@ -215,14 +216,14 @@ export function FavoritesTab({
           <span className="step">★</span>
           <h2>キーワードお気に入り</h2>
           <span className="chip">
-            監視中 {keywordFavorites.filter((f) => f.enabled).length} / {MAX_KEYWORD} 件
+            登録 {keywordFavorites.length} / {MAX_KEYWORD} 件 ・ 監視中 {keywordWatching} 件
           </span>
         </div>
         <div className="pid">
           最終チェック:{" "}
           {status?.last_tick_at ? JST_TIME.format(new Date(status.last_tick_at)) : "—"}
           {status?.next_nightly_at
-            ? `　次回 ${JST_TIME.format(new Date(status.next_nightly_at))}`
+            ? `　次回(夜間) ${JST_TIME.format(new Date(status.next_nightly_at))}`
             : ""}
         </div>
         {keywordFavorites.length === 0 ? (

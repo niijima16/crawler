@@ -153,7 +153,7 @@ describe("FavoritesTab keyword section", () => {
     const { keywords } = setup([], []);
 
     expect(keywords).toHaveTextContent("キーワードお気に入りはまだありません");
-    expect(keywords).toHaveTextContent("監視中 0 / 5 件");
+    expect(keywords).toHaveTextContent("登録 0 / 5 件 ・ 監視中 0 件");
   });
 
   it("shows the monitored count, last-check time and 監視中 badge from the status", () => {
@@ -169,9 +169,9 @@ describe("FavoritesTab keyword section", () => {
       status,
     );
 
-    expect(keywords).toHaveTextContent("監視中 1 / 5 件");
+    expect(keywords).toHaveTextContent("登録 2 / 5 件 ・ 監視中 1 件");
     expect(keywords).toHaveTextContent("最終チェック: 20:13");
-    expect(keywords).toHaveTextContent("次回 21:00");
+    expect(keywords).toHaveTextContent("次回(夜間) 21:00");
     expect(within(keywords).getByText("監視中")).toBeInTheDocument();
     expect(within(keywords).getByText("無効")).toBeInTheDocument();
   });

@@ -877,3 +877,37 @@ def test_notifications_include_product_and_payment_for_new_arrivals() -> None:
 
     item = response.json()["items"][0]
     assert item["product_id"] == 807736 and item["payment_method"] == "8"
+
+
+def test_store_pickup_preview_stream_emits_steps_then_done_with_the_session() -> None:
+    with _app(FakeSite().factory) as client:
+        account_id = _with_account(client)
+        response = client.get(
+            "/api/store-pickup-preview/stream",
+            params={"account_id": account_id, "product_id": PID, "payment_method": "8"},
+        )
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/event-stream")
+    text = response.text
+    assert "event: step" in text
+    assert '"step":"login"' in text
+    assert '"step":"handoff"' in text
+    assert "event: done" in text
+    assert "sess-xyz" in text  # 引き継ぎcookieは done で届く
+    # パスワードは流れない。cookie は done より前（途中の step イベント）には出ない
+    assert "secret-pw" not in text
+    assert text.index("sess-xyz") > text.index("event: done")
+
+
+def test_store_pickup_preview_stream_reports_not_purchasable_as_an_error_event() -> None:
+    with _app(FakeSite(cart="product_page_soldout.html").factory) as client:
+        account_id = _with_account(client)
+        response = client.get(
+            "/api/store-pickup-preview/stream",
+            params={"account_id": account_id, "product_id": PID, "payment_method": "8"},
+        )
+
+    assert response.status_code == 200
+    assert "event: error" in response.text
+    assert "secret-pw" not in response.text

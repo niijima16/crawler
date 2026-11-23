@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { App } from "./App";
 import {
@@ -465,12 +465,42 @@ describe("tabs and favorites", () => {
   });
 });
 
-describe("browser handoff", () => {
+type SseListener = (event: { data: string }) => void;
+
+class FakeEventSource {
+  static last: FakeEventSource | null = null;
+  listeners: Record<string, SseListener> = {};
+  closed = false;
+  constructor(public url: string) {
+    FakeEventSource.last = this;
+  }
+  addEventListener(type: string, cb: SseListener) {
+    this.listeners[type] = cb;
+  }
+  close() {
+    this.closed = true;
+  }
+  emit(type: string, data: unknown) {
+    act(() => this.listeners[type]?.({ data: JSON.stringify(data) }));
+  }
+}
+
+describe("browser handoff (progress stream)", () => {
   const HANDOFF = {
     cookie_name: "PHPSESSID",
     cookie_value: "sess-xyz",
     confirm_url: "https://www.dollyteria.com/cart/confirm",
   };
+
+  beforeEach(() => {
+    FakeEventSource.last = null;
+    vi.stubGlobal("EventSource", FakeEventSource);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    delete document.documentElement.dataset.pickupExtension;
+  });
 
   async function toHandoffMode() {
     await user.click(screen.getByRole("radio", { name: "ブラウザで購入" }));
@@ -482,86 +512,48 @@ describe("browser handoff", () => {
     return events;
   }
 
-  afterEach(() => {
-    delete document.documentElement.dataset.pickupExtension;
-  });
-
-  it("sends handoff=true and shows the handoff card", async () => {
-    const { calls } = api({
-      "POST /api/store-pickup-preview": () => json(200, { ...PREVIEW_RESULT, handoff: HANDOFF }),
-    });
+  async function startFromSearch() {
     await ready();
     await searchAndSelect();
     await toHandoffMode();
-
     await user.click(
       within(summary()).getByRole("button", { name: "確認画面まで進めてブラウザに引き継ぐ" }),
     );
+    return (await screen.findByRole("region", { name: "確認画面への引き継ぎ" })) as HTMLElement;
+  }
 
-    const card = await screen.findByRole("region", { name: "ブラウザで購入する" });
-    expect(card).toHaveTextContent("SD/豆本 S-26-11-01-584-TO-ZS");
-    const body = calls.find((c) => c.key === "POST /api/store-pickup-preview")?.body;
-    expect(body).toMatchObject({ handoff: true, submit_order: false });
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  it("opens the progress stream for the selected product and shows steps", async () => {
+    api();
+    const region = await startFromSearch();
+
+    const source = FakeEventSource.last as FakeEventSource;
+    expect(source.url).toContain("/api/store-pickup-preview/stream");
+    expect(source.url).toContain("product_id=807736");
+    source.emit("step", { step: "login", status: "done", attempt: 1 });
+    expect(within(region).getByText("ログイン").closest("li")).toHaveClass("done");
   });
 
-  it("auto-opens the confirmation once when the extension is present", async () => {
+  it("opens the confirmation once on done when the extension is present", async () => {
     document.documentElement.dataset.pickupExtension = "1";
-    api({
-      "POST /api/store-pickup-preview": () => json(200, { ...PREVIEW_RESULT, handoff: HANDOFF }),
-    });
-    await ready();
-    await searchAndSelect();
-    await toHandoffMode();
+    api();
+    await startFromSearch();
     const events = captureHandoffEvents();
 
-    await user.click(
-      within(summary()).getByRole("button", { name: "確認画面まで進めてブラウザに引き継ぐ" }),
-    );
-    await screen.findByRole("region", { name: "ブラウザで購入する" });
+    (FakeEventSource.last as FakeEventSource).emit("done", HANDOFF);
 
     expect(events).toHaveLength(1);
     expect(events[0].detail).toEqual({ cookieValue: "sess-xyz" });
   });
 
-  it("does not auto-open when the extension is missing", async () => {
-    api({
-      "POST /api/store-pickup-preview": () => json(200, { ...PREVIEW_RESULT, handoff: HANDOFF }),
-    });
-    await ready();
-    await searchAndSelect();
-    await toHandoffMode();
+  it("does not dispatch and tells the user to install the extension when missing", async () => {
+    api();
+    const region = await startFromSearch();
     const events = captureHandoffEvents();
 
-    await user.click(
-      within(summary()).getByRole("button", { name: "確認画面まで進めてブラウザに引き継ぐ" }),
-    );
-    await screen.findByRole("region", { name: "ブラウザで購入する" });
+    (FakeEventSource.last as FakeEventSource).emit("done", HANDOFF);
 
     expect(events).toHaveLength(0);
-    expect(within(summary()).getByRole("button", { name: "確認画面を開く" })).toBeDisabled();
-    expect(screen.getAllByText(/DevTools/).length).toBeGreaterThan(0);
-  });
-
-  it("re-opens the confirmation from the button (extension present)", async () => {
-    document.documentElement.dataset.pickupExtension = "1";
-    api({
-      "POST /api/store-pickup-preview": () => json(200, { ...PREVIEW_RESULT, handoff: HANDOFF }),
-    });
-    await ready();
-    await searchAndSelect();
-    await toHandoffMode();
-
-    await user.click(
-      within(summary()).getByRole("button", { name: "確認画面まで進めてブラウザに引き継ぐ" }),
-    );
-    await screen.findByRole("region", { name: "ブラウザで購入する" });
-
-    const events = captureHandoffEvents();
-    await user.click(within(summary()).getByRole("button", { name: "確認画面を開く" }));
-
-    expect(events).toHaveLength(1);
-    expect(events[0].detail).toEqual({ cookieValue: "sess-xyz" });
+    expect(region).toHaveTextContent("拡張機能を入れると");
   });
 });
 
@@ -572,7 +564,13 @@ describe("keyword favorites", () => {
     confirm_url: "https://www.dollyteria.com/cart/confirm",
   };
 
+  beforeEach(() => {
+    FakeEventSource.last = null;
+    vi.stubGlobal("EventSource", FakeEventSource);
+  });
+
   afterEach(() => {
+    vi.unstubAllGlobals();
     delete document.documentElement.dataset.pickupExtension;
   });
 
@@ -611,11 +609,10 @@ describe("keyword favorites", () => {
     });
   });
 
-  it("opens the confirmation for a new-arrival notification via handoff", async () => {
+  it("streams the handoff for a new-arrival notification and opens the confirmation", async () => {
     document.documentElement.dataset.pickupExtension = "1";
-    const { calls } = api({
+    api({
       "GET /api/notifications": () => json(200, { unread: 1, items: [NOTE_NEW_ARRIVAL] }),
-      "POST /api/store-pickup-preview": () => json(200, { ...PREVIEW_RESULT, handoff: HANDOFF }),
     });
     await ready();
     await user.click(screen.getByRole("tab", { name: /自動購入/ }));
@@ -624,16 +621,16 @@ describe("keyword favorites", () => {
     const listener = (e: Event) => events.push(e as CustomEvent);
     window.addEventListener("pickup-handoff", listener);
     await user.click(await screen.findByRole("button", { name: "確認画面を開く" }));
+
+    // 進捗オーバーレイが開き、その商品のストリームを購読する
+    await screen.findByRole("region", { name: "確認画面への引き継ぎ" });
+    const source = FakeEventSource.last as FakeEventSource;
+    expect(source.url).toContain("product_id=815572");
+    expect(source.url).toContain("payment_method=8");
+
+    source.emit("done", HANDOFF);
     await waitFor(() => expect(events).toHaveLength(1));
     window.removeEventListener("pickup-handoff", listener);
-
-    const body = calls.find((c) => c.key === "POST /api/store-pickup-preview")?.body;
-    expect(body).toMatchObject({
-      account_id: "a1",
-      product_id: 815572,
-      payment_method: "8",
-      handoff: true,
-    });
     expect(events[0].detail).toEqual({ cookieValue: "sess-xyz" });
   });
 });

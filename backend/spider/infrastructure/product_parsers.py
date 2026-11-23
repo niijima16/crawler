@@ -2,6 +2,7 @@ import re
 
 from spider.application.ports import UpstreamError
 from spider.application.use_cases import ProductNotFound
+from spider.domain.keyword_favorite import Genre
 from spider.domain.product import CheckoutPreview, OrderForm, ProductSummary
 from spider.infrastructure.html_tree import Node, parse_html
 
@@ -33,6 +34,38 @@ def extract_product_page(html: str, product_id: int) -> ProductSummary:
         price_yen=_yen(price.text()),
         in_stock=_has_cart_form(root, product_id),
     )
+
+
+def _category_id(href: str) -> int | None:
+    match = re.search(r"/product-list/(\d+)", href)
+    return int(match.group(1)) if match else None
+
+
+def extract_categories(html: str) -> list[Genre]:
+    """カテゴリのドロップダウン（親カテゴリ > 子カテゴリ）から Genre の一覧を作る。
+
+    コメントアウトされた旧ブロックはパーサが破棄する。PC版・スマホ版で同じ id が重複
+    するため、最初に出てきたものを採用して dedupe する。
+    """
+    root = parse_html(html)
+    seen: set[int] = set()
+    categories: list[Genre] = []
+    for block in root.find_all(lambda n: n.tag == "li" and n.has_class("parent_category")):
+        parent = block.find(lambda n: n.tag == "a" and n.has_class("parentcategory_link"))
+        subs = block.find(lambda n: n.tag == "ul" and n.has_class("subcategories"))
+        if parent is None or subs is None:
+            continue
+        parent_label = parent.text()
+        for link in subs.find_all(lambda n: n.tag == "a"):
+            category_id = _category_id(link.attrs.get("href", ""))
+            child_label = link.text()
+            if category_id is None or category_id in seen or not child_label:
+                continue
+            seen.add(category_id)
+            categories.append(
+                Genre(category_id=category_id, label=f"{parent_label} > {child_label}")
+            )
+    return categories
 
 
 def extract_product_ids(html: str) -> set[int]:

@@ -3,7 +3,7 @@ from typing import Literal, Protocol
 
 from spider.domain.account import Account, Notification
 from spider.domain.favorite import Favorite, FavoriteState
-from spider.domain.keyword_favorite import KeywordFavorite
+from spider.domain.keyword_favorite import Genre, KeywordFavorite
 
 
 class LoginFailed(Exception):
@@ -52,6 +52,10 @@ class SiteClient(Protocol):
     def get_cookie(self, name: str) -> str | None: ...
 
     async def aclose(self) -> None: ...
+
+
+class CategoryProvider(Protocol):
+    async def list_categories(self) -> list[Genre]: ...
 
 
 class EntityNotFound(Exception):

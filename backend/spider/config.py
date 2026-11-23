@@ -63,3 +63,7 @@ def load_monitor_settings(env: Mapping[str, str]) -> MonitorSettings:
             env, "NIGHTLY_RETRY_INTERVAL_SECONDS", 0.1, 0.05, 8
         ),
     )
+
+
+def load_category_cache_ttl(env: Mapping[str, str]) -> float:
+    return _bounded(env, "CATEGORY_CACHE_TTL_SECONDS", 3600.0, 1, 86400)

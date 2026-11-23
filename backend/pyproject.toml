@@ -7,7 +7,9 @@ dependencies = [
     "cryptography>=50.0.2",
     "fastapi>=0.165.0",
     "httpx>=0.27",
+    "playwright>=1.65.2",
     "pydantic>=2",
+    "smooth-cursor-playwright>=0.1.0",
     "uvicorn>=0.54.0",
 ]
 

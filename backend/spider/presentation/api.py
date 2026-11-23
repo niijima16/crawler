@@ -44,7 +44,7 @@ from spider.application.use_cases import (
 )
 from spider.domain.account import Account, Notification
 from spider.domain.favorite import Favorite
-from spider.domain.keyword_favorite import DEFAULT_GENRE_ID, GENRES, Genre, KeywordFavorite
+from spider.domain.keyword_favorite import DEFAULT_GENRE_ID, Genre, KeywordFavorite
 from spider.domain.order import Order
 from spider.domain.payment import DEFAULT_PAYMENT_METHOD_ID, PAYMENT_METHODS, PaymentMethod
 from spider.domain.product import ProductSummary, StorePickupResult
@@ -337,7 +337,7 @@ def create_app(deps: Dependencies) -> FastAPI:
 
     @router.get("/genres")
     async def genres() -> list[Genre]:
-        return list(GENRES)
+        return await kw.categories.list_categories()
 
     @router.post("/keyword-favorites", response_model=None)
     async def add_keyword_favorite(body: KeywordFavoriteRequest) -> KeywordFavorite | JSONResponse:

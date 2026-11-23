@@ -5,6 +5,8 @@ x-backend-env: &backend-env
   # 21時の夜間チェックだけ、混雑対策で速い再試行にする（夜間のみ・負荷に注意）
   NIGHTLY_PARALLELISM: ${NIGHTLY_PARALLELISM:-10}
   NIGHTLY_RETRY_INTERVAL_SECONDS: ${NIGHTLY_RETRY_INTERVAL_SECONDS:-0.1}
+  # キーワードお気に入りのジャンル一覧をサイトから取得してキャッシュする秒数（既定1時間）
+  CATEGORY_CACHE_TTL_SECONDS: ${CATEGORY_CACHE_TTL_SECONDS:-3600}
   # 注文確定は既定で無効。有効にするときだけ true にする（.env で上書き）
   ALLOW_ORDER_SUBMIT: ${ALLOW_ORDER_SUBMIT:-false}
   # 資格情報の暗号化鍵。空なら、ローカル用に自動生成して CREDENTIALS_KEY_FILE に保存する

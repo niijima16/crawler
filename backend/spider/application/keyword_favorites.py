@@ -3,6 +3,7 @@ from typing import NamedTuple
 
 from spider.application.ports import (
     AccountRepository,
+    CategoryProvider,
     Clock,
     DuplicateFavorite,
     EntityNotFound,
@@ -13,7 +14,7 @@ from spider.application.ports import (
 )
 from spider.application.products import search_products
 from spider.application.retry import PreviewRuntime
-from spider.domain.keyword_favorite import KeywordFavorite, get_genre
+from spider.domain.keyword_favorite import KeywordFavorite
 from spider.domain.payment import get_payment_method
 from spider.domain.product import ProductSummary
 
@@ -23,6 +24,7 @@ MAX_KEYWORD_FAVORITES = 10
 class KeywordFavoriteDeps(NamedTuple):
     keyword_favorites: KeywordFavoriteRepository
     accounts: AccountRepository
+    categories: CategoryProvider
     clock: Clock
     new_id: Callable[[], str]
     client_factory: Callable[[], SiteClient]
@@ -66,7 +68,8 @@ async def register_keyword_favorite(
     payment_method_id: str,
     price_cap_yen: int | None,
 ) -> KeywordFavorite:
-    genre = get_genre(category_id)  # 未知のジャンルは KeyError
+    by_id = {c.category_id: c for c in await deps.categories.list_categories()}
+    genre = by_id[category_id]  # 未知のジャンルは KeyError
     _check_payment_method(payment_method_id)
     if await deps.accounts.get_with_secret(account_id) is None:
         raise EntityNotFound

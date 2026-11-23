@@ -14,6 +14,7 @@ from spider.application.preview import CheckoutParsers, PreviewConfig
 from spider.application.retry import PreviewRuntime
 from spider.application.use_cases import SALES_HISTORY_URL, ProductNotFound
 from spider.domain.account import Account, Notification
+from spider.domain.keyword_favorite import GENRES, Genre
 from spider.infrastructure.history_parser import extract_orders
 from spider.infrastructure.product_parser import extract_latest_product_name
 from spider.infrastructure.product_parsers import (
@@ -97,12 +98,21 @@ class Factory:
         return client
 
 
+class _FakeCategories:
+    def __init__(self, categories: list[Genre] | None = None) -> None:
+        self._categories = categories if categories is not None else list(GENRES)
+
+    async def list_categories(self) -> list[Genre]:
+        return self._categories
+
+
 def _deps(
     factory: Any,
     *,
     allow_order_submit: bool = False,
     parallelism: int = 1,
     repos: MemoryRepos | None = None,
+    categories: list[Genre] | None = None,
 ) -> Dependencies:
     clock = FakeTime()
     shared_repos = repos or MemoryRepos()
@@ -130,7 +140,7 @@ def _deps(
         runtime=PreviewRuntime(sleep=clock.sleep, rng=lambda: 1.0, now=clock),
         login_deadline_seconds=15.0,
         favorite_deps=_favorite_deps(factory, clock, shared_repos),
-        keyword_deps=_keyword_deps(factory, clock, shared_repos),
+        keyword_deps=_keyword_deps(factory, clock, shared_repos, categories),
         on_startup=_noop,
     )
 
@@ -167,7 +177,9 @@ def _favorite_deps(factory: Any, clock: FakeTime, repos: MemoryRepos) -> Favorit
     )
 
 
-def _keyword_deps(factory: Any, clock: FakeTime, repos: MemoryRepos) -> KeywordFavoriteDeps:
+def _keyword_deps(
+    factory: Any, clock: FakeTime, repos: MemoryRepos, categories: list[Genre] | None = None
+) -> KeywordFavoriteDeps:
     counter = {"n": 0}
 
     def new_id() -> str:
@@ -177,6 +189,7 @@ def _keyword_deps(factory: Any, clock: FakeTime, repos: MemoryRepos) -> KeywordF
     return KeywordFavoriteDeps(
         keyword_favorites=repos.keyword_favorites,
         accounts=repos.accounts,
+        categories=_FakeCategories(categories),
         clock=_FixedClock(),
         new_id=new_id,
         client_factory=factory,
@@ -764,14 +777,20 @@ def test_handoff_with_the_credit_card_is_422() -> None:
 KW = {"account_id": "", "keyword": "豆本", "category_id": 22}
 
 
-def test_genres_lists_the_dropdown_options() -> None:
-    with _app(Factory()) as client:
+def test_genres_lists_the_categories_from_the_provider() -> None:
+    provided = [
+        Genre(category_id=22, label="スーパードルフィー > 本体"),
+        Genre(category_id=215, label="新品ウィッグ > 9-10inch(SD)"),
+    ]
+    with _app(Factory(), categories=provided) as client:
         response = client.get("/api/genres")
 
     genres = response.json()
     assert response.status_code == 200
-    assert {"category_id": 22, "label": "SuperDollfie > 本体"} in genres
-    assert len(genres) >= 8
+    assert genres == [
+        {"category_id": 22, "label": "スーパードルフィー > 本体"},
+        {"category_id": 215, "label": "新品ウィッグ > 9-10inch(SD)"},
+    ]
 
 
 def test_keyword_favorite_crud() -> None:

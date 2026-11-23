@@ -111,3 +111,17 @@ def test_item_is_in_cart_when_the_remove_button_exists() -> None:
 
 def test_sold_out_product_page_is_not_a_cart_page() -> None:
     assert not is_in_cart(_html("product_page_soldout.html"), 810296)
+
+
+def test_extract_categories_builds_parent_child_labels_and_dedupes() -> None:
+    from spider.domain.keyword_favorite import Genre  # noqa: PLC0415
+    from spider.infrastructure.product_parsers import extract_categories  # noqa: PLC0415
+
+    categories = extract_categories(_html("category_nav.html"))
+
+    # コメントアウトされた旧ブロック(999)は含まれない。SP版の重複(22)は1つに。
+    assert Genre(category_id=22, label="SuperDollfie > 本体") in categories
+    assert Genre(category_id=24, label="SuperDollfie > ウィッグ") in categories
+    assert Genre(category_id=156, label="新品アウトフィット > SDGIRL") in categories
+    assert [c.category_id for c in categories] == [22, 24, 156, 158]
+    assert all(c.category_id != 999 for c in categories)

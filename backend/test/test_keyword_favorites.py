@@ -19,6 +19,7 @@ from spider.application.ports import (
 )
 from spider.application.retry import PreviewRuntime
 from spider.domain.account import Account
+from spider.domain.keyword_favorite import GENRES, Genre
 from spider.infrastructure.product_parsers import extract_product_ids, extract_search_results
 from test.fake_repos import MemoryRepos
 from test.fakes import FakeTime, html
@@ -33,6 +34,14 @@ SITE = "https://www.dollyteria.com"
 class FakeClock:
     def now(self) -> datetime:
         return NOW
+
+
+class FakeCategories:
+    def __init__(self, categories: list[Genre] | None = None) -> None:
+        self._categories = categories if categories is not None else list(GENRES)
+
+    async def list_categories(self) -> list[Genre]:
+        return self._categories
 
 
 class SearchClient:
@@ -54,7 +63,9 @@ class SearchClient:
     async def aclose(self) -> None: ...
 
 
-def _deps(search_body: str = SEARCH) -> tuple[KeywordFavoriteDeps, MemoryRepos, list[SearchClient]]:
+def _deps(
+    search_body: str = SEARCH, categories: list[Genre] | None = None
+) -> tuple[KeywordFavoriteDeps, MemoryRepos, list[SearchClient]]:
     repos = MemoryRepos()
     clients: list[SearchClient] = []
     counter = {"n": 0}
@@ -72,6 +83,7 @@ def _deps(search_body: str = SEARCH) -> tuple[KeywordFavoriteDeps, MemoryRepos, 
     deps = KeywordFavoriteDeps(
         keyword_favorites=repos.keyword_favorites,
         accounts=repos.accounts,
+        categories=FakeCategories(categories),
         clock=FakeClock(),
         new_id=new_id,
         client_factory=factory,
@@ -193,3 +205,18 @@ async def test_register_stores_the_baseline_in_the_add_so_there_is_no_window() -
     # add は1回だけ、baseline（現在の商品ID）を伴って呼ばれる（enabled のまま空で作る窓が無い）
     assert len(adds) == 1
     assert adds[0][1] == {775386, 810296, 810297}
+
+
+async def test_register_uses_categories_from_the_provider() -> None:
+    # 提供されたカテゴリ（固定8件ではなく動的取得を想定）の id とラベルを使う
+    provided = [Genre(category_id=215, label="新品ウィッグ > 9-10inch(SD)")]
+    deps, repos, _ = _deps(categories=provided)
+    await _account(repos)
+
+    fav = await register_keyword_favorite(deps, "a1", "SD", 215, "8", None)
+
+    assert (fav.category_id, fav.category_label) == (215, "新品ウィッグ > 9-10inch(SD)")
+
+    # 提供カテゴリに無い id は未知ジャンル（KeyError）
+    with pytest.raises(KeyError):
+        await register_keyword_favorite(deps, "a1", "SD", 22, "8", None)

@@ -20,8 +20,11 @@ from spider.domain.product import (
     Handoff,
     OrderForm,
     OrderResult,
+    PreviewStep,
     StorePickupResult,
 )
+
+type OnStep = Callable[[PreviewStep], None]
 
 MAX_PARALLELISM = 5
 CONFIRM_URL = f"{SITE}/cart/confirm"
@@ -91,10 +94,15 @@ async def store_pickup_preview(
     submit_order: bool,
     handoff: bool = False,
     retry_delay: Callable[[int, Callable[[], float]], float] = backoff_delay,
+    on_step: OnStep | None = None,
 ) -> StorePickupResult:
     method = _validate(payment_method_id, submit_order, handoff, config)
     attempts = _Attempts()
     deadline_at = runtime.now() + config.deadline_seconds
+
+    def emit(step: str, status: str, attempt: int = 0) -> None:
+        if on_step is not None:
+            on_step(PreviewStep(step=step, status=status, attempt=attempt))  # type: ignore[arg-type]
 
     async def session() -> _Reached:
         client = client_factory()
@@ -110,6 +118,7 @@ async def store_pickup_preview(
                 product_id,
                 method,
                 retry_delay,
+                emit,
             )
         except BaseException:
             await asyncio.shield(client.aclose())
@@ -123,9 +132,11 @@ async def store_pickup_preview(
 
     try:
         if handoff:
+            emit("handoff", "started", 1)
             cookie = reached.client.get_cookie("PHPSESSID")
             if cookie is None:
                 raise UpstreamError
+            emit("handoff", "done", 1)
             return StorePickupResult(
                 preview=reached.preview,
                 attempts=attempts.count,
@@ -156,18 +167,29 @@ async def _run_session(
     product_id: int,
     method: PaymentMethod,
     retry_delay: Callable[[int, Callable[[], float]], float] = backoff_delay,
+    emit: Callable[[str, str, int], None] = lambda step, status, attempt: None,
 ) -> _Reached:
-    async def step[T](action: Callable[[], Awaitable[T]]) -> T:
-        return await retrying(
+    async def step[T](label: str, action: Callable[[], Awaitable[T]]) -> T:
+        tries = _Attempts()
+
+        def on_attempt() -> None:
+            attempts.add()
+            tries.add()
+            emit(label, "started", tries.count)
+
+        result = await retrying(
             action,
             runtime=runtime,
             deadline_at=deadline_at,
-            on_attempt=attempts.add,
+            on_attempt=on_attempt,
             delay=retry_delay,
         )
+        emit(label, "done", tries.count)
+        return result
 
-    await step(lambda: client.login(email, password))
+    await step("login", lambda: client.login(email, password))
     cart = await step(
+        "cart",
         lambda: client.post(
             f"{SITE}/product/{product_id}",
             {
@@ -176,14 +198,15 @@ async def _run_session(
                 f"cart_addquantity_{product_id}": "1",
                 "cart_add_btn": "カートに入れる",
             },
-        )
+        ),
     )
     if not parsers.is_in_cart(cart, product_id):
         raise NotPurchasable
-    shipping = await step(lambda: client.get(CUSTOMER_URL))
+    shipping = await step("shipping", lambda: client.get(CUSTOMER_URL))
     if method.id not in parsers.payment_options(shipping):
         raise PaymentMethodUnavailable
     confirm_html = await step(
+        "confirm",
         lambda: client.post(
             SHIPPING_URL,
             {
@@ -196,7 +219,7 @@ async def _run_session(
                 "cart_payment_display": "t",
                 "go-next": "次へ",
             },
-        )
+        ),
     )
     preview = parsers.confirm(confirm_html, product_id)
     if not preview.payment_method.startswith(method.label):

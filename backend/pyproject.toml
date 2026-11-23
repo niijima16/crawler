@@ -28,6 +28,8 @@ testpaths = ["test"]
 
 [tool.ruff]
 line-length = 100
+# global_utils は本体（spider）とは別の実験用スクリプト置き場。機械チェックの対象外。
+extend-exclude = ["global_utils"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
@@ -35,6 +37,7 @@ select = ["E", "F", "I", "UP", "B"]
 [tool.mypy]
 strict = true
 files = ["spider", "test"]
+exclude = ["global_utils"]
 
 [[tool.mypy.overrides]]
 module = ["boto3.*", "botocore.*"]

@@ -62,7 +62,8 @@ export type NotificationKind =
   | "unknown"
   | "skipped_price_cap"
   | "account_stopped"
-  | "submit_disabled";
+  | "submit_disabled"
+  | "new_arrival";
 
 export type AppNotification = {
   id: string;
@@ -71,6 +72,8 @@ export type AppNotification = {
   message: string;
   created_at: string;
   read: boolean;
+  product_id: number | null;
+  payment_method: string | null;
 };
 
 export type NotificationList = { unread: number; items: AppNotification[] };
@@ -80,4 +83,19 @@ export type AutoStatus = {
   order_submit_allowed: boolean;
   last_tick_at: string | null;
   next_nightly_at: string;
+};
+
+export type Genre = { category_id: number; label: string };
+
+export type KeywordFavorite = {
+  id: string;
+  account_id: string;
+  keyword: string;
+  category_id: number;
+  category_label: string;
+  payment_method: string;
+  price_cap_yen: number | null;
+  enabled: boolean;
+  new_arrival_count: number;
+  created_at: string;
 };

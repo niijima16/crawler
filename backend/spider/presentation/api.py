@@ -9,7 +9,9 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, SecretStr, model_validator
 
 from spider.application import favorites as favorite_cases
+from spider.application import keyword_favorites as keyword_cases
 from spider.application.favorites import FavoriteDeps
+from spider.application.keyword_favorites import KeywordFavoriteDeps
 from spider.application.login import check_login
 from spider.application.ports import (
     DuplicateAccount,
@@ -42,6 +44,7 @@ from spider.application.use_cases import (
 )
 from spider.domain.account import Account, Notification
 from spider.domain.favorite import Favorite
+from spider.domain.keyword_favorite import DEFAULT_GENRE_ID, GENRES, Genre, KeywordFavorite
 from spider.domain.order import Order
 from spider.domain.payment import DEFAULT_PAYMENT_METHOD_ID, PAYMENT_METHODS, PaymentMethod
 from spider.domain.product import ProductSummary, StorePickupResult
@@ -63,6 +66,7 @@ class Dependencies(NamedTuple):
     runtime: PreviewRuntime
     login_deadline_seconds: float
     favorite_deps: FavoriteDeps
+    keyword_deps: KeywordFavoriteDeps
     on_startup: Callable[[], Awaitable[None]]
 
 
@@ -132,6 +136,19 @@ class AutoPurchaseState(BaseModel):
 
 class EnabledRequest(BaseModel):
     enabled: bool
+
+
+class KeywordFavoriteRequest(BaseModel):
+    account_id: str
+    keyword: str
+    category_id: int = DEFAULT_GENRE_ID
+    payment_method: str = DEFAULT_PAYMENT_METHOD_ID
+    price_cap_yen: int | None = None
+
+
+class KeywordFavoritePatch(BaseModel):
+    payment_method: str
+    price_cap_yen: int | None = None
 
 
 def _error(status: int, message: str) -> JSONResponse:
@@ -315,6 +332,52 @@ def create_app(deps: Dependencies) -> FastAPI:
     async def set_auto_purchase(body: EnabledRequest) -> AutoPurchaseState:
         await favorite_cases.set_auto_purchase_enabled(cases, body.enabled)
         return await auto_purchase_state()
+
+    kw = deps.keyword_deps
+
+    @router.get("/genres")
+    async def genres() -> list[Genre]:
+        return list(GENRES)
+
+    @router.post("/keyword-favorites", response_model=None)
+    async def add_keyword_favorite(body: KeywordFavoriteRequest) -> KeywordFavorite | JSONResponse:
+        try:
+            return await keyword_cases.register_keyword_favorite(
+                kw,
+                body.account_id,
+                body.keyword,
+                body.category_id,
+                body.payment_method,
+                body.price_cap_yen,
+            )
+        except KeyError:
+            return _error(422, "unknown_genre")
+
+    @router.get("/keyword-favorites")
+    async def list_keyword_favorites(account_id: str | None = None) -> list[KeywordFavorite]:
+        return await keyword_cases.list_keyword_favorites(kw, account_id)
+
+    @router.patch("/keyword-favorites/{favorite_id}")
+    async def update_keyword_favorite(
+        favorite_id: str, body: KeywordFavoritePatch
+    ) -> KeywordFavorite:
+        return await keyword_cases.update_keyword_favorite(
+            kw, favorite_id, payment_method=body.payment_method, price_cap_yen=body.price_cap_yen
+        )
+
+    @router.delete("/keyword-favorites/{favorite_id}", status_code=204)
+    async def delete_keyword_favorite(favorite_id: str) -> None:
+        await keyword_cases.delete_keyword_favorite(kw, favorite_id)
+
+    @router.put("/keyword-favorites/{favorite_id}/enabled")
+    async def set_keyword_favorite_enabled(
+        favorite_id: str, body: EnabledRequest
+    ) -> KeywordFavorite:
+        await keyword_cases.set_keyword_favorite_enabled(kw, favorite_id, body.enabled)
+        favorite = await kw.keyword_favorites.get(favorite_id)
+        if favorite is None:
+            raise EntityNotFound
+        return favorite
 
     app.include_router(router)
 

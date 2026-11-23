@@ -10,6 +10,7 @@ NotificationKind = Literal[
     "skipped_price_cap",
     "account_stopped",
     "submit_disabled",
+    "new_arrival",
 ]
 
 
@@ -32,3 +33,5 @@ class Notification(BaseModel):
     message: str
     created_at: datetime
     read: bool
+    product_id: int | None = None
+    payment_method: str | None = None

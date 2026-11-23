@@ -17,8 +17,11 @@ import { maskEmail } from "./format";
 import { favoriteError, LOGIN_INVALIDATED } from "./messages";
 import type {
   Account,
+  AppNotification,
   AutoStatus,
   Favorite,
+  Genre,
+  KeywordFavorite,
   NotificationList,
   PaymentMethod,
   Product,
@@ -41,6 +44,8 @@ export function App() {
   const [confirming, setConfirming] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [favorites, setFavorites] = useState<Favorite[]>([]);
+  const [genres, setGenres] = useState<Genre[]>([]);
+  const [keywordFavorites, setKeywordFavorites] = useState<KeywordFavorite[]>([]);
   const [favoriteMessage, setFavoriteMessage] = useState<string | null>(null);
   const [notes, setNotes] = useState<NotificationList>({ unread: 0, items: [] });
   const [status, setStatus] = useState<AutoStatus | null>(null);
@@ -48,6 +53,7 @@ export function App() {
 
   useEffect(() => {
     api.listPaymentMethods().then(setMethods, () => setMethods([]));
+    api.listGenres().then(setGenres, () => setGenres([]));
     api.listAccounts().then(
       (list) => {
         setAccounts(list);
@@ -60,9 +66,11 @@ export function App() {
   const loadFavorites = useCallback(() => {
     if (accountId === null) {
       setFavorites([]);
+      setKeywordFavorites([]);
       return;
     }
     api.listFavorites(accountId).then(setFavorites, () => setFavorites([]));
+    api.listKeywordFavorites(accountId).then(setKeywordFavorites, () => setKeywordFavorites([]));
   }, [accountId]);
 
   useEffect(loadFavorites, [loadFavorites]);
@@ -153,6 +161,28 @@ export function App() {
     }
   }
 
+  const openArrival = useCallback(
+    async (note: AppNotification) => {
+      if (accountId === null || note.product_id === null) return;
+      try {
+        const result = await api.runPreview({
+          account_id: accountId,
+          product_id: note.product_id,
+          payment_method: note.payment_method ?? DEFAULT_PAYMENT_ID,
+          submit_order: false,
+          handoff: true,
+        });
+        if (result.handoff && isExtensionInstalled()) {
+          openConfirmation(result.handoff.cookie_value);
+        }
+      } catch {
+        // 売り切れ等は結果カードではなく通知側で扱う（ここでは握りつぶさず再取得に任せる）
+        loadStatus();
+      }
+    },
+    [accountId, loadStatus],
+  );
+
   const step = locked ? 1 : outcome ? 5 : selected ? 4 : 3;
   return (
     <div className="screen">
@@ -234,13 +264,26 @@ export function App() {
           {locked ? (
             <p className="locknote">「商品を探す」タブでアカウントを追加してください。</p>
           ) : (
-            <FavoritesTab favorites={favorites} methods={methods} onChanged={loadFavorites} />
+            <FavoritesTab
+              favorites={favorites}
+              methods={methods}
+              onChanged={loadFavorites}
+              keywordFavorites={keywordFavorites}
+              genres={genres}
+              accountId={accountId ?? ""}
+            />
           )}
         </div>
       )}
       {tab === "auto" && (
         <div className="body one">
-          <AutoPurchaseTab status={status} notifications={notes} now={now} onChanged={loadStatus} />
+          <AutoPurchaseTab
+            status={status}
+            notifications={notes}
+            now={now}
+            onChanged={loadStatus}
+            onOpenConfirmation={openArrival}
+          />
         </div>
       )}
       {confirming && selected && account && (

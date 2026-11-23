@@ -2,13 +2,14 @@ import { useState } from "react";
 import { ApiError, api } from "../api";
 import { formatRemaining, workerState } from "../format";
 import { favoriteError } from "../messages";
-import type { AutoStatus, NotificationList } from "../types";
+import type { AppNotification, AutoStatus, NotificationList } from "../types";
 
 type Props = {
   status: AutoStatus | null;
   notifications: NotificationList;
   now: Date;
   onChanged: () => void;
+  onOpenConfirmation: (note: AppNotification) => void;
 };
 
 const WORKER_TEXT = {
@@ -17,7 +18,13 @@ const WORKER_TEXT = {
   unknown: { text: "未確認", className: "" },
 };
 
-export function AutoPurchaseTab({ status, notifications, now, onChanged }: Props) {
+export function AutoPurchaseTab({
+  status,
+  notifications,
+  now,
+  onChanged,
+  onOpenConfirmation,
+}: Props) {
   const [error, setError] = useState<string | null>(null);
 
   async function run(action: () => Promise<unknown>) {
@@ -102,6 +109,17 @@ export function AutoPurchaseTab({ status, notifications, now, onChanged }: Props
                 <span className="dot" />
                 <div>
                   <div>{note.message}</div>
+                  {note.kind === "new_arrival" && note.product_id !== null && (
+                    <div className="row" style={{ marginTop: "6px" }}>
+                      <button
+                        type="button"
+                        className="dark"
+                        onClick={() => onOpenConfirmation(note)}
+                      >
+                        確認画面を開く
+                      </button>
+                    </div>
+                  )}
                   <div className="t">{new Date(note.created_at).toLocaleString("ja-JP")}</div>
                 </div>
               </li>

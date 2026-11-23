@@ -11,6 +11,7 @@ from typing import NamedTuple
 from spider.application.ports import (
     AccountRepository,
     FavoriteRepository,
+    KeywordFavoriteRepository,
     NotificationRepository,
     SecretBox,
     SettingsRepository,
@@ -27,6 +28,7 @@ class Store(NamedTuple):
     favorites: FavoriteRepository
     notifications: NotificationRepository
     settings: SettingsRepository
+    keyword_favorites: KeywordFavoriteRepository
     secret_box: SecretBox
 
 
@@ -76,6 +78,13 @@ def build_store(env: Mapping[str, str]) -> tuple[Store, Callable[[], Awaitable[N
         await asyncio.to_thread(ensure_tables, client, prefix)
 
     return (
-        Store(repos.accounts, repos.favorites, repos.notifications, repos.settings, secret_box),
+        Store(
+            repos.accounts,
+            repos.favorites,
+            repos.notifications,
+            repos.settings,
+            repos.keyword_favorites,
+            secret_box,
+        ),
         setup,
     )

@@ -11,6 +11,7 @@ from botocore.exceptions import ClientError
 
 from spider.domain.account import Account, Notification
 from spider.domain.favorite import Favorite, FavoriteState
+from spider.domain.keyword_favorite import KeywordFavorite
 
 _CLIENT_CONFIG = Config(connect_timeout=3, read_timeout=10, retries={"max_attempts": 3})
 
@@ -19,6 +20,7 @@ _TABLES: dict[str, list[tuple[str, str]]] = {
     "favorites": [("id", "HASH")],
     "notifications": [("pk", "HASH"), ("sk", "RANGE")],
     "settings": [("id", "HASH")],
+    "keyword_favorites": [("id", "HASH")],
 }
 _NOTIFICATION_PARTITION = "N"
 _SETTINGS_ID = "settings"
@@ -243,6 +245,10 @@ class DynamoNotifications:
         }
         if notification.favorite_id is not None:
             item["favorite_id"] = notification.favorite_id
+        if notification.product_id is not None:
+            item["product_id"] = notification.product_id
+        if notification.payment_method is not None:
+            item["payment_method"] = notification.payment_method
         await asyncio.to_thread(self._table.put_item, Item=item)
 
     async def list_all(self, limit: int = 50) -> list[Notification]:
@@ -260,6 +266,8 @@ class DynamoNotifications:
                 message=i["message"],
                 created_at=datetime.fromisoformat(i["created_at"]),
                 read=bool(i["read"]),
+                product_id=int(i["product_id"]) if i.get("product_id") is not None else None,
+                payment_method=i.get("payment_method"),
             )
             for i in response["Items"]
         ]
@@ -320,11 +328,143 @@ class DynamoSettings:
         )
 
 
+class DynamoKeywordFavorites:
+    def __init__(self, table: Any) -> None:
+        self._table = table
+
+    def _to_item(self, favorite: KeywordFavorite) -> dict[str, Any]:
+        item = favorite.model_dump(exclude={"price_cap_yen", "created_at"})
+        item["created_at"] = _iso(favorite.created_at)
+        if favorite.price_cap_yen is not None:
+            item["price_cap_yen"] = favorite.price_cap_yen
+        return item
+
+    def _from_item(self, i: dict[str, Any]) -> KeywordFavorite:
+        cap = i.get("price_cap_yen")
+        return KeywordFavorite(
+            id=i["id"],
+            account_id=i["account_id"],
+            keyword=i["keyword"],
+            category_id=int(i["category_id"]),
+            category_label=i["category_label"],
+            payment_method=i["payment_method"],
+            price_cap_yen=int(cap) if cap is not None else None,
+            enabled=bool(i["enabled"]),
+            new_arrival_count=int(i["new_arrival_count"]),
+            created_at=datetime.fromisoformat(i["created_at"]),
+        )
+
+    async def add(self, favorite: KeywordFavorite) -> None:
+        await asyncio.to_thread(
+            self._table.put_item,
+            Item=self._to_item(favorite),
+            ConditionExpression=Attr("id").not_exists(),
+        )
+
+    async def get(self, favorite_id: str) -> KeywordFavorite | None:
+        if not favorite_id:
+            return None
+        response = await asyncio.to_thread(self._table.get_item, Key={"id": favorite_id})
+        item = response.get("Item")
+        return self._from_item(item) if item else None
+
+    async def list_all(self, account_id: str | None = None) -> list[KeywordFavorite]:
+        kwargs: dict[str, Any] = {}
+        if account_id is not None:
+            kwargs["FilterExpression"] = Attr("account_id").eq(account_id)
+        items = await asyncio.to_thread(_items, self._table, "scan", **kwargs)
+        return [self._from_item(i) for i in items]
+
+    async def list_enabled(self) -> list[KeywordFavorite]:
+        items = await asyncio.to_thread(
+            _items, self._table, "scan", FilterExpression=Attr("enabled").eq(True)
+        )
+        return [self._from_item(i) for i in items]
+
+    async def update_settings(
+        self, favorite_id: str, payment_method: str, price_cap_yen: int | None
+    ) -> bool:
+        expression = "SET payment_method = :p"
+        values: dict[str, Any] = {":p": payment_method}
+        if price_cap_yen is None:
+            expression += " REMOVE price_cap_yen"
+        else:
+            expression += ", price_cap_yen = :c"
+            values[":c"] = price_cap_yen
+        return await self._update(favorite_id, expression, values)
+
+    async def set_enabled(self, favorite_id: str, enabled: bool) -> bool:
+        return await self._update(favorite_id, "SET enabled = :e", {":e": enabled})
+
+    async def _update(self, favorite_id: str, expression: str, values: dict[str, Any]) -> bool:
+        if not favorite_id:
+            return False
+        try:
+            await asyncio.to_thread(
+                self._table.update_item,
+                Key={"id": favorite_id},
+                UpdateExpression=expression,
+                ConditionExpression=Attr("id").exists(),
+                ExpressionAttributeValues=values,
+            )
+        except ClientError as error:
+            if _condition_failed(error):
+                return False
+            raise
+        return True
+
+    async def delete(self, favorite_id: str) -> None:
+        if favorite_id:
+            await asyncio.to_thread(self._table.delete_item, Key={"id": favorite_id})
+
+    async def delete_for_account(self, account_id: str) -> None:
+        for favorite in await self.list_all(account_id):
+            await self.delete(favorite.id)
+
+    async def mark_seen(self, favorite_id: str, product_ids: set[int]) -> None:
+        if not product_ids:
+            return
+        await asyncio.to_thread(
+            self._table.update_item,
+            Key={"id": favorite_id},
+            UpdateExpression="ADD seen_product_ids :p",
+            ExpressionAttributeValues={":p": set(product_ids)},
+        )
+
+    async def claim_product(self, favorite_id: str, product_id: int) -> bool:
+        if not favorite_id:
+            return False
+        try:
+            await asyncio.to_thread(
+                self._table.update_item,
+                Key={"id": favorite_id},
+                UpdateExpression="ADD seen_product_ids :p",
+                ConditionExpression=(
+                    "attribute_not_exists(seen_product_ids) OR NOT contains(seen_product_ids, :pid)"
+                ),
+                ExpressionAttributeValues={":p": {product_id}, ":pid": product_id},
+            )
+        except ClientError as error:
+            if _condition_failed(error):
+                return False
+            raise
+        return True
+
+    async def bump_new_arrival(self, favorite_id: str) -> None:
+        await asyncio.to_thread(
+            self._table.update_item,
+            Key={"id": favorite_id},
+            UpdateExpression="SET new_arrival_count = new_arrival_count + :one",
+            ExpressionAttributeValues={":one": 1},
+        )
+
+
 class DynamoRepositories(NamedTuple):
     accounts: DynamoAccounts
     favorites: DynamoFavorites
     notifications: DynamoNotifications
     settings: DynamoSettings
+    keyword_favorites: DynamoKeywordFavorites
 
 
 def build_repositories(resource: Any, prefix: str) -> DynamoRepositories:
@@ -336,4 +476,5 @@ def build_repositories(resource: Any, prefix: str) -> DynamoRepositories:
         favorites=DynamoFavorites(table("favorites")),
         notifications=DynamoNotifications(table("notifications")),
         settings=DynamoSettings(table("settings")),
+        keyword_favorites=DynamoKeywordFavorites(table("keyword_favorites")),
     )

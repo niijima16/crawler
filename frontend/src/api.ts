@@ -2,6 +2,8 @@ import type {
   Account,
   AutoStatus,
   Favorite,
+  Genre,
+  KeywordFavorite,
   NotificationList,
   PaymentMethod,
   Product,
@@ -125,4 +127,23 @@ export const api = {
   autoStatus: () => request<AutoStatus>("/api/auto-purchase/status"),
   setAutoEnabled: (enabled: boolean) =>
     request<AutoStatus>("/api/auto-purchase/enabled", put({ enabled })),
+  listGenres: () => request<Genre[]>("/api/genres"),
+  listKeywordFavorites: (accountId: string) =>
+    request<KeywordFavorite[]>(
+      `/api/keyword-favorites?account_id=${encodeURIComponent(accountId)}`,
+    ),
+  addKeywordFavorite: (body: {
+    account_id: string;
+    keyword: string;
+    category_id: number;
+    payment_method: string;
+    price_cap_yen: number | null;
+  }) => request<KeywordFavorite>("/api/keyword-favorites", post(body)),
+  updateKeywordFavorite: (
+    id: string,
+    body: { payment_method: string; price_cap_yen: number | null },
+  ) => request<KeywordFavorite>(`/api/keyword-favorites/${id}`, patch(body)),
+  setKeywordFavoriteEnabled: (id: string, enabled: boolean) =>
+    request<KeywordFavorite>(`/api/keyword-favorites/${id}/enabled`, put({ enabled })),
+  deleteKeywordFavorite: (id: string) => request<void>(`/api/keyword-favorites/${id}`, remove),
 };

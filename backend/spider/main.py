@@ -4,6 +4,7 @@ import time
 from asyncio import sleep
 
 from spider.application.favorites import FavoriteDeps
+from spider.application.keyword_favorites import KeywordFavoriteDeps
 from spider.application.preview import CheckoutParsers
 from spider.application.retry import PreviewRuntime
 from spider.config import LOGIN_CHECK_DEADLINE_SECONDS, load_preview_config
@@ -57,6 +58,16 @@ app = create_app(
             extract_product_page=extract_product_page,
             runtime=_runtime,
             login_deadline_seconds=LOGIN_CHECK_DEADLINE_SECONDS,
+        ),
+        keyword_deps=KeywordFavoriteDeps(
+            keyword_favorites=_store.keyword_favorites,
+            accounts=_store.accounts,
+            clock=SystemClock(),
+            new_id=new_id,
+            client_factory=HttpSiteClient,
+            extract_search_results=extract_search_results,
+            extract_product_ids=extract_product_ids,
+            runtime=_runtime,
         ),
         on_startup=_setup,
     )

@@ -6,6 +6,7 @@ from spider.application.ports import (
     AccountRepository,
     Clock,
     FavoriteRepository,
+    KeywordFavoriteRepository,
     LoginFailed,
     NotificationRepository,
     NotPurchasable,
@@ -19,10 +20,12 @@ from spider.application.ports import (
     UpstreamError,
 )
 from spider.application.preview import CheckoutParsers, PreviewConfig, store_pickup_preview
-from spider.application.retry import PreviewRuntime, backoff_delay, fixed_delay
+from spider.application.products import search_products
+from spider.application.retry import PreviewRuntime, backoff_delay, fixed_delay, retrying
 from spider.application.use_cases import SITE, ProductNotFound
 from spider.domain.account import Notification, NotificationKind
 from spider.domain.favorite import Favorite, FavoriteState
+from spider.domain.keyword_favorite import KeywordFavorite
 from spider.domain.product import OrderResult, ProductSummary
 
 HEARTBEAT_INTERVAL_SECONDS = 300
@@ -44,6 +47,9 @@ class MonitorDeps(NamedTuple):
     stale_purchasing_seconds: float
     nightly_parallelism: int
     nightly_retry_interval_seconds: float
+    keyword_favorites: "KeywordFavoriteRepository"
+    extract_search_results: Callable[[str, set[int]], list["ProductSummary"]]
+    extract_product_ids: Callable[[str], set[int]]
     new_id: Callable[[], str]
 
 
@@ -66,16 +72,16 @@ async def _run(deps: MonitorDeps, *, nightly: bool) -> None:
         if favorite.state == "purchasing":
             await _expire_if_stale(deps, favorite, now)
     if not await deps.settings.auto_purchase_enabled():
-        return  # OFF の間は、商品ページの確認も購入もしない（検知のみでは何も残らないため）
+        return  # OFF の間は、商品ページの確認も購入も検知もしない（検知のみでは何も残らないため）
     watching = [f for f in active if f.state == "watching"]
-    if not watching:
-        return
-    client = deps.client_factory()
-    try:
-        for favorite in watching:
-            await _check_favorite(deps, client, favorite, nightly)
-    finally:
-        await client.aclose()
+    if watching:
+        client = deps.client_factory()
+        try:
+            for favorite in watching:
+                await _check_favorite(deps, client, favorite, nightly)
+        finally:
+            await client.aclose()
+    await _check_keyword_favorites(deps, nightly)
 
 
 async def _heartbeat(deps: MonitorDeps, now: datetime) -> None:
@@ -284,3 +290,76 @@ async def _record(
             "unknown",
             f"注文の成否が不明です。購入履歴を確認してください（自動では再購入しません）: {name}",
         )
+
+
+async def _check_keyword_favorites(deps: MonitorDeps, nightly: bool) -> None:
+    """キーワードお気に入りの新着を検知して通知する（購入・送信はしない）。"""
+    delay = fixed_delay(deps.nightly_retry_interval_seconds) if nightly else backoff_delay
+    deadline = deps.preview_config.deadline_seconds if nightly else deps.tick_deadline_seconds
+    for favorite in await deps.keyword_favorites.list_enabled():
+        client = deps.client_factory()
+
+        async def do_search(
+            c: SiteClient = client, f: KeywordFavorite = favorite
+        ) -> list[ProductSummary]:
+            return await search_products(
+                c, f.keyword, deps.extract_search_results, deps.extract_product_ids, f.category_id
+            )
+
+        try:
+            results = await retrying(
+                do_search,
+                runtime=deps.runtime,
+                deadline_at=deps.runtime.now() + deadline,
+                delay=delay,
+            )
+        except (UpstreamError, PreviewTimeout):
+            continue  # 一時的なエラーは、通知も seen 更新もせず次回に任せる
+        finally:
+            await client.aclose()
+        for product in results:
+            if not product.in_stock:
+                continue  # 購入可能でない新着は seen に入れず持ち越す
+            if not await deps.keyword_favorites.claim_product(favorite.id, product.product_id):
+                continue  # すでに通知済み
+            cap = favorite.price_cap_yen
+            if cap is not None and product.price_yen > cap:
+                await _notify_arrival(
+                    deps,
+                    favorite,
+                    "skipped_price_cap",
+                    f"新着が価格上限を超えているためスキップ: {product.name}"
+                    f"（{product.price_yen:,}円 > 上限 {cap:,}円）",
+                    product,
+                )
+            else:
+                await _notify_arrival(
+                    deps,
+                    favorite,
+                    "new_arrival",
+                    f"新着あり: {product.name}（{product.price_yen:,}円・"
+                    f"キーワード「{favorite.keyword}」）",
+                    product,
+                )
+                await deps.keyword_favorites.bump_new_arrival(favorite.id)
+
+
+async def _notify_arrival(
+    deps: MonitorDeps,
+    favorite: "KeywordFavorite",
+    kind: NotificationKind,
+    message: str,
+    product: ProductSummary,
+) -> None:
+    await deps.notifications.add(
+        Notification(
+            id=deps.new_id(),
+            favorite_id=favorite.id,
+            kind=kind,
+            message=message,
+            created_at=deps.clock.now(),
+            read=False,
+            product_id=product.product_id,
+            payment_method=favorite.payment_method,
+        )
+    )

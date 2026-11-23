@@ -23,7 +23,9 @@ from spider.infrastructure.product_parsers import (
     extract_confirm,
     extract_order_form,
     extract_payment_options,
+    extract_product_ids,
     extract_product_page,
+    extract_search_results,
     is_in_cart,
     is_recaptcha_rejected,
 )
@@ -110,6 +112,9 @@ def build_monitor_deps(
         stale_purchasing_seconds=settings.stale_purchasing_seconds,
         nightly_parallelism=settings.nightly_parallelism,
         nightly_retry_interval_seconds=settings.nightly_retry_interval_seconds,
+        keyword_favorites=store.keyword_favorites,
+        extract_search_results=extract_search_results,
+        extract_product_ids=extract_product_ids,
         new_id=new_id,
     )
     return deps, setup

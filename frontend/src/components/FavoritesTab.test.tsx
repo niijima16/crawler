@@ -2,12 +2,16 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { favorite, GENRES, keywordFavorite, METHODS } from "../test-data";
 import { json, mockApi } from "../test-utils";
-import type { Favorite, KeywordFavorite } from "../types";
+import type { AutoStatus, Favorite, KeywordFavorite } from "../types";
 import { FavoritesTab } from "./FavoritesTab";
 
 const user = userEvent.setup();
 
-function setup(favorites: Favorite[] = [favorite()], keywordFavorites: KeywordFavorite[] = []) {
+function setup(
+  favorites: Favorite[] = [favorite()],
+  keywordFavorites: KeywordFavorite[] = [],
+  status: AutoStatus | null = null,
+) {
   const onChanged = vi.fn();
   render(
     <FavoritesTab
@@ -17,6 +21,7 @@ function setup(favorites: Favorite[] = [favorite()], keywordFavorites: KeywordFa
       keywordFavorites={keywordFavorites}
       genres={GENRES}
       accountId="a1"
+      status={status}
     />,
   );
   return {
@@ -148,7 +153,33 @@ describe("FavoritesTab keyword section", () => {
     const { keywords } = setup([], []);
 
     expect(keywords).toHaveTextContent("キーワードお気に入りはまだありません");
-    expect(keywords).toHaveTextContent("0 / 5 件");
+    expect(keywords).toHaveTextContent("監視中 0 / 5 件");
+  });
+
+  it("shows the monitored count, last-check time and 監視中 badge from the status", () => {
+    const status: AutoStatus = {
+      enabled: true,
+      order_submit_allowed: false,
+      last_tick_at: "2026-11-23T11:13:00Z", // = 20:13 JST
+      next_nightly_at: "2026-11-23T21:00:00+09:00",
+    };
+    const { keywords } = setup(
+      [],
+      [keywordFavorite(), keywordFavorite({ id: "k2", enabled: false })],
+      status,
+    );
+
+    expect(keywords).toHaveTextContent("監視中 1 / 5 件");
+    expect(keywords).toHaveTextContent("最終チェック: 20:13");
+    expect(keywords).toHaveTextContent("次回 21:00");
+    expect(within(keywords).getByText("監視中")).toBeInTheDocument();
+    expect(within(keywords).getByText("無効")).toBeInTheDocument();
+  });
+
+  it("shows a dash when there is no last-check time", () => {
+    const { keywords } = setup([], [keywordFavorite()], null);
+
+    expect(keywords).toHaveTextContent("最終チェック: —");
   });
 
   it("toggles enabled and deletes a keyword favorite", async () => {

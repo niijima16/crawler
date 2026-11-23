@@ -271,6 +271,7 @@ export function App() {
               keywordFavorites={keywordFavorites}
               genres={genres}
               accountId={accountId ?? ""}
+              status={status}
             />
           )}
         </div>

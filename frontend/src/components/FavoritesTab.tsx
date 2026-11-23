@@ -1,7 +1,14 @@
 import { type FormEvent, useState } from "react";
 import { ApiError, api, type FavoritePatch } from "../api";
 import { favoriteError } from "../messages";
-import type { Favorite, FavoriteState, Genre, KeywordFavorite, PaymentMethod } from "../types";
+import type {
+  AutoStatus,
+  Favorite,
+  FavoriteState,
+  Genre,
+  KeywordFavorite,
+  PaymentMethod,
+} from "../types";
 import { KeywordFavoriteForm } from "./KeywordFavoriteForm";
 
 const MAX_FAVORITES = 20;
@@ -17,6 +24,13 @@ const STATE_LABEL: Record<FavoriteState, { text: string; className: string }> = 
 
 const MAX_KEYWORD = 5;
 
+const JST_TIME = new Intl.DateTimeFormat("ja-JP", {
+  hour: "2-digit",
+  minute: "2-digit",
+  timeZone: "Asia/Tokyo",
+  hour12: false,
+});
+
 type Props = {
   favorites: Favorite[];
   methods: PaymentMethod[];
@@ -24,6 +38,7 @@ type Props = {
   keywordFavorites?: KeywordFavorite[];
   genres?: Genre[];
   accountId?: string;
+  status?: AutoStatus | null;
 };
 
 export function FavoritesTab({
@@ -33,6 +48,7 @@ export function FavoritesTab({
   keywordFavorites = [],
   genres = [],
   accountId = "",
+  status = null,
 }: Props) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [payment, setPayment] = useState("8");
@@ -199,8 +215,15 @@ export function FavoritesTab({
           <span className="step">★</span>
           <h2>キーワードお気に入り</h2>
           <span className="chip">
-            {keywordFavorites.length} / {MAX_KEYWORD} 件
+            監視中 {keywordFavorites.filter((f) => f.enabled).length} / {MAX_KEYWORD} 件
           </span>
+        </div>
+        <div className="pid">
+          最終チェック:{" "}
+          {status?.last_tick_at ? JST_TIME.format(new Date(status.last_tick_at)) : "—"}
+          {status?.next_nightly_at
+            ? `　次回 ${JST_TIME.format(new Date(status.next_nightly_at))}`
+            : ""}
         </div>
         {keywordFavorites.length === 0 ? (
           <p className="empty">
@@ -258,7 +281,7 @@ function KeywordRow({
         <div className="nm">
           {`「${favorite.keyword}」`}{" "}
           <span className={`st ${favorite.enabled ? "watch" : "stop"}`}>
-            {favorite.enabled ? "有効" : "無効"}
+            {favorite.enabled ? "監視中" : "無効"}
           </span>
         </div>
         <div className="pid">ジャンル: {favorite.category_label}</div>

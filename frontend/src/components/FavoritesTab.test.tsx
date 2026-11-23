@@ -1,15 +1,29 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { favorite, METHODS } from "../test-data";
+import { favorite, GENRES, keywordFavorite, METHODS } from "../test-data";
 import { json, mockApi } from "../test-utils";
+import type { Favorite, KeywordFavorite } from "../types";
 import { FavoritesTab } from "./FavoritesTab";
 
 const user = userEvent.setup();
 
-function setup(favorites = [favorite()]) {
+function setup(favorites: Favorite[] = [favorite()], keywordFavorites: KeywordFavorite[] = []) {
   const onChanged = vi.fn();
-  render(<FavoritesTab favorites={favorites} methods={METHODS} onChanged={onChanged} />);
-  return { onChanged, tab: screen.getByRole("region", { name: "お気に入り" }) };
+  render(
+    <FavoritesTab
+      favorites={favorites}
+      methods={METHODS}
+      onChanged={onChanged}
+      keywordFavorites={keywordFavorites}
+      genres={GENRES}
+      accountId="a1"
+    />,
+  );
+  return {
+    onChanged,
+    tab: screen.getByRole("region", { name: "商品お気に入り" }),
+    keywords: screen.getByRole("region", { name: "キーワードお気に入り" }),
+  };
 }
 
 afterEach(() => vi.unstubAllGlobals());
@@ -114,5 +128,60 @@ describe("FavoritesTab", () => {
     await user.click(within(tab).getByRole("button", { name: "解除" }));
 
     expect(await within(tab).findByText(/サイトに接続できません/)).toBeInTheDocument();
+  });
+});
+
+describe("FavoritesTab keyword section", () => {
+  it("lists keyword favorites with their genre, state and new-arrival count", () => {
+    const { keywords } = setup(
+      [],
+      [keywordFavorite({ price_cap_yen: 3000, new_arrival_count: 2 })],
+    );
+
+    expect(keywords).toHaveTextContent("「豆本」");
+    expect(keywords).toHaveTextContent("ジャンル: SuperDollfie > 本体");
+    expect(keywords).toHaveTextContent("価格上限: 3,000円");
+    expect(keywords).toHaveTextContent("新着: 2 件");
+  });
+
+  it("shows an empty state", () => {
+    const { keywords } = setup([], []);
+
+    expect(keywords).toHaveTextContent("キーワードお気に入りはまだありません");
+    expect(keywords).toHaveTextContent("0 / 5 件");
+  });
+
+  it("toggles enabled and deletes a keyword favorite", async () => {
+    const { calls } = mockApi({
+      "PUT /api/keyword-favorites/k1/enabled": () => json(200, keywordFavorite({ enabled: false })),
+      "DELETE /api/keyword-favorites/k1": () => new Response(null, { status: 204 }),
+    });
+    const { keywords, onChanged } = setup([], [keywordFavorite()]);
+
+    await user.click(within(keywords).getByRole("button", { name: "無効化" }));
+    await waitFor(() => expect(calls.some((c) => c.key.endsWith("/enabled"))).toBe(true));
+    expect(calls.find((c) => c.key.endsWith("/enabled"))?.body).toEqual({ enabled: false });
+
+    await user.click(within(keywords).getByRole("button", { name: "解除" }));
+    await waitFor(() =>
+      expect(calls.some((c) => c.key === "DELETE /api/keyword-favorites/k1")).toBe(true),
+    );
+    expect(onChanged).toHaveBeenCalled();
+  });
+
+  it("edits the payment method and price cap", async () => {
+    const { calls } = mockApi({
+      "PATCH /api/keyword-favorites/k1": () => json(200, keywordFavorite()),
+    });
+    const { keywords } = setup([], [keywordFavorite({ price_cap_yen: 3000 })]);
+
+    await user.click(within(keywords).getByRole("button", { name: "編集" }));
+    await user.selectOptions(within(keywords).getByRole("combobox", { name: "支払方法" }), "3");
+    const cap = within(keywords).getByLabelText("価格上限（円）");
+    await user.clear(cap);
+    await user.click(within(keywords).getByRole("button", { name: "保存" }));
+
+    await waitFor(() => expect(calls).toHaveLength(1));
+    expect(calls[0].body).toEqual({ payment_method: "3", price_cap_yen: null });
   });
 });

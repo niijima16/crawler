@@ -5,8 +5,11 @@ import {
   ACCOUNT,
   ACCOUNT_B,
   favorite,
+  GENRES,
+  keywordFavorite,
   MAME,
   METHODS,
+  NOTE_NEW_ARRIVAL,
   NOTE_REJECTED,
   PREVIEW_RESULT,
   SOLD_OUT,
@@ -26,6 +29,8 @@ function api(extra: Routes = {}, accounts = [ACCOUNT]) {
     "GET /api/favorites": () => json(200, []),
     "GET /api/notifications": () => json(200, { unread: 0, items: [] }),
     "GET /api/auto-purchase/status": () => json(200, STATUS),
+    "GET /api/genres": () => json(200, GENRES),
+    "GET /api/keyword-favorites": () => json(200, []),
     "GET /api/products": () => json(200, [MAME, SOLD_OUT]),
     "GET /api/products/807736": () => json(200, MAME),
     "POST /api/store-pickup-preview": () => json(200, PREVIEW_RESULT),
@@ -386,7 +391,7 @@ describe("tabs and favorites", () => {
 
     await user.click(screen.getByRole("tab", { name: "お気に入り" }));
 
-    const tab = await screen.findByRole("region", { name: "お気に入り" });
+    const tab = await screen.findByRole("region", { name: "商品お気に入り" });
     expect(tab).toHaveTextContent("SD/豆本 S-26-11-01-584-TO-ZS");
     expect(tab).toHaveTextContent("価格上限: 1,500円");
   });
@@ -556,6 +561,79 @@ describe("browser handoff", () => {
     await user.click(within(summary()).getByRole("button", { name: "確認画面を開く" }));
 
     expect(events).toHaveLength(1);
+    expect(events[0].detail).toEqual({ cookieValue: "sess-xyz" });
+  });
+});
+
+describe("keyword favorites", () => {
+  const HANDOFF = {
+    cookie_name: "PHPSESSID",
+    cookie_value: "sess-xyz",
+    confirm_url: "https://www.dollyteria.com/cart/confirm",
+  };
+
+  afterEach(() => {
+    delete document.documentElement.dataset.pickupExtension;
+  });
+
+  it("lists keyword favorites of the account in the favorites tab", async () => {
+    const { calls } = api({ "GET /api/keyword-favorites": () => json(200, [keywordFavorite()]) });
+    await ready();
+    await waitFor(() =>
+      expect(calls.some((c) => c.key === "GET /api/keyword-favorites")).toBe(true),
+    );
+
+    await user.click(screen.getByRole("tab", { name: "お気に入り" }));
+
+    const section = await screen.findByRole("region", { name: "キーワードお気に入り" });
+    await waitFor(() => expect(section).toHaveTextContent("「豆本」"));
+    expect(section).toHaveTextContent("SuperDollfie > 本体");
+  });
+
+  it("registers a keyword favorite with the chosen genre", async () => {
+    const { calls } = api({ "POST /api/keyword-favorites": () => json(200, keywordFavorite()) });
+    await ready();
+    await user.click(screen.getByRole("tab", { name: "お気に入り" }));
+
+    const form = await screen.findByRole("region", { name: "キーワードお気に入りを登録" });
+    await within(form).findByRole("option", { name: "SDGIRL/SD13GIRL" });
+    await user.type(within(form).getByLabelText("キーワード"), "豆本");
+    await user.selectOptions(within(form).getByRole("combobox", { name: "ジャンル" }), "136");
+    await user.click(within(form).getByRole("button", { name: "登録する" }));
+
+    await waitFor(() =>
+      expect(calls.some((c) => c.key === "POST /api/keyword-favorites")).toBe(true),
+    );
+    expect(calls.find((c) => c.key === "POST /api/keyword-favorites")?.body).toMatchObject({
+      account_id: "a1",
+      keyword: "豆本",
+      category_id: 136,
+    });
+  });
+
+  it("opens the confirmation for a new-arrival notification via handoff", async () => {
+    document.documentElement.dataset.pickupExtension = "1";
+    const { calls } = api({
+      "GET /api/notifications": () => json(200, { unread: 1, items: [NOTE_NEW_ARRIVAL] }),
+      "POST /api/store-pickup-preview": () => json(200, { ...PREVIEW_RESULT, handoff: HANDOFF }),
+    });
+    await ready();
+    await user.click(screen.getByRole("tab", { name: /自動購入/ }));
+
+    const events: CustomEvent[] = [];
+    const listener = (e: Event) => events.push(e as CustomEvent);
+    window.addEventListener("pickup-handoff", listener);
+    await user.click(await screen.findByRole("button", { name: "確認画面を開く" }));
+    await waitFor(() => expect(events).toHaveLength(1));
+    window.removeEventListener("pickup-handoff", listener);
+
+    const body = calls.find((c) => c.key === "POST /api/store-pickup-preview")?.body;
+    expect(body).toMatchObject({
+      account_id: "a1",
+      product_id: 815572,
+      payment_method: "8",
+      handoff: true,
+    });
     expect(events[0].detail).toEqual({ cookieValue: "sess-xyz" });
   });
 });

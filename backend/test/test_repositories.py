@@ -13,11 +13,13 @@ import pytest
 from spider.application.ports import (
     AccountRepository,
     FavoriteRepository,
+    KeywordFavoriteRepository,
     NotificationRepository,
     SettingsRepository,
 )
 from spider.domain.account import Account, Notification
 from spider.domain.favorite import Favorite
+from spider.domain.keyword_favorite import KeywordFavorite
 from test.fake_repos import MemoryRepos
 
 pytestmark = pytest.mark.anyio
@@ -32,16 +34,24 @@ class Repos:
         favorites: FavoriteRepository,
         notifications: NotificationRepository,
         settings: SettingsRepository,
+        keyword_favorites: "KeywordFavoriteRepository",
     ) -> None:
         self.accounts = accounts
         self.favorites = favorites
         self.notifications = notifications
         self.settings = settings
+        self.keyword_favorites = keyword_favorites
 
 
 def _memory() -> Repos:
     memory = MemoryRepos()
-    return Repos(memory.accounts, memory.favorites, memory.notifications, memory.settings)
+    return Repos(
+        memory.accounts,
+        memory.favorites,
+        memory.notifications,
+        memory.settings,
+        memory.keyword_favorites,
+    )
 
 
 def _dynamodb() -> Repos:
@@ -55,7 +65,13 @@ def _dynamodb() -> Repos:
     prefix = f"t{uuid.uuid4().hex[:8]}-"
     ensure_tables(client, prefix)
     built = build_repositories(resource, prefix)
-    return Repos(built.accounts, built.favorites, built.notifications, built.settings)
+    return Repos(
+        built.accounts,
+        built.favorites,
+        built.notifications,
+        built.settings,
+        built.keyword_favorites,
+    )
 
 
 FACTORIES: list[tuple[str, Callable[[], Repos]]] = [("memory", _memory)]
@@ -243,3 +259,107 @@ async def test_an_empty_id_is_simply_not_found(repos: Repos) -> None:
     assert await repos.favorites.get("") is None
     assert not await repos.favorites.update_settings("", "8", None)
     assert not await repos.favorites.transition("", "watching", "stopped", 0, T0)
+
+
+# --- キーワードお気に入り -----------------------------------------------------
+
+
+def _keyword_fav(
+    kid: str = "k1", account_id: str = "a1", keyword: str = "豆本"
+) -> "KeywordFavorite":
+    return KeywordFavorite(
+        id=kid,
+        account_id=account_id,
+        keyword=keyword,
+        category_id=22,
+        category_label="SuperDollfie > 本体",
+        payment_method="8",
+        price_cap_yen=None,
+        enabled=True,
+        new_arrival_count=0,
+        created_at=T0,
+    )
+
+
+async def test_keyword_favorites_crud(repos: Repos) -> None:
+    await repos.keyword_favorites.add(_keyword_fav("k1", "a1"))
+    await repos.keyword_favorites.add(_keyword_fav("k2", "a2"))
+
+    assert await repos.keyword_favorites.get("k1") == _keyword_fav("k1", "a1")
+    assert await repos.keyword_favorites.get("missing") is None
+    assert [k.id for k in await repos.keyword_favorites.list_all("a1")] == ["k1"]
+    assert {k.id for k in await repos.keyword_favorites.list_all()} == {"k1", "k2"}
+
+
+async def test_keyword_favorite_enabled_filter_and_toggle(repos: Repos) -> None:
+    await repos.keyword_favorites.add(_keyword_fav("k1"))
+    await repos.keyword_favorites.add(_keyword_fav("k2"))
+    await repos.keyword_favorites.set_enabled("k2", False)
+
+    assert {k.id for k in await repos.keyword_favorites.list_enabled()} == {"k1"}
+
+
+async def test_keyword_favorite_update_and_delete(repos: Repos) -> None:
+    await repos.keyword_favorites.add(_keyword_fav("k1", "a1"))
+    await repos.keyword_favorites.add(_keyword_fav("k2", "a1"))
+
+    assert await repos.keyword_favorites.update_settings("k1", "3", 1500)
+    updated = await repos.keyword_favorites.get("k1")
+    assert updated is not None
+    assert (updated.payment_method, updated.price_cap_yen) == ("3", 1500)
+
+    await repos.keyword_favorites.delete("k1")
+    assert await repos.keyword_favorites.get("k1") is None
+
+    await repos.keyword_favorites.delete_for_account("a1")
+    assert await repos.keyword_favorites.list_all() == []
+
+
+async def test_claim_product_succeeds_once(repos: Repos) -> None:
+    await repos.keyword_favorites.add(_keyword_fav("k1"))
+
+    assert await repos.keyword_favorites.claim_product("k1", 100)
+    assert not await repos.keyword_favorites.claim_product("k1", 100)  # 2回目は失敗
+    assert await repos.keyword_favorites.claim_product("k1", 200)
+
+
+async def test_exactly_one_of_two_concurrent_claims_wins_keyword(repos: Repos) -> None:
+    import asyncio  # noqa: PLC0415
+
+    await repos.keyword_favorites.add(_keyword_fav("k1"))
+
+    results = await asyncio.gather(
+        repos.keyword_favorites.claim_product("k1", 100),
+        repos.keyword_favorites.claim_product("k1", 100),
+    )
+
+    assert sorted(results) == [False, True]
+
+
+async def test_bump_new_arrival(repos: Repos) -> None:
+    await repos.keyword_favorites.add(_keyword_fav("k1"))
+
+    await repos.keyword_favorites.bump_new_arrival("k1")
+    await repos.keyword_favorites.bump_new_arrival("k1")
+
+    favorite = await repos.keyword_favorites.get("k1")
+    assert favorite is not None
+    assert favorite.new_arrival_count == 2
+
+
+async def test_notifications_keep_product_and_payment(repos: Repos) -> None:
+    await repos.notifications.add(
+        Notification(
+            id="n1",
+            favorite_id="k1",
+            kind="new_arrival",
+            message="m",
+            created_at=T0,
+            read=False,
+            product_id=807736,
+            payment_method="8",
+        )
+    )
+
+    items = await repos.notifications.list_all()
+    assert (items[0].product_id, items[0].payment_method) == (807736, "8")

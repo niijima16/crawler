@@ -3,6 +3,8 @@ import type {
   AppNotification,
   AutoStatus,
   Favorite,
+  Genre,
+  KeywordFavorite,
   PaymentMethod,
   Product,
   StorePickupResult,
@@ -75,6 +77,8 @@ export const NOTE_REJECTED: AppNotification = {
   id: "n1",
   favorite_id: "f1",
   kind: "rejected",
+  product_id: null,
+  payment_method: null,
   message: "サイトの reCAPTCHA により注文は受理されませんでした（注文は作られていません）: SD/豆本",
   created_at: "2026-11-22T12:00:00Z",
   read: false,
@@ -84,7 +88,47 @@ export const NOTE_PURCHASED: AppNotification = {
   id: "n2",
   favorite_id: "f2",
   kind: "purchased",
+  product_id: null,
+  payment_method: null,
   message: "注文が確定しました（受注番号 96301）: SD16/OF:靴",
   created_at: "2026-11-21T05:12:00Z",
   read: true,
+};
+
+export const GENRES: Genre[] = [
+  { category_id: 22, label: "SuperDollfie > 本体" },
+  { category_id: 136, label: "SDGIRL/SD13GIRL" },
+  { category_id: 137, label: "SDBOY/SD13BOY" },
+  { category_id: 139, label: "MSD" },
+  { category_id: 140, label: "幼SD" },
+  { category_id: 138, label: "DD" },
+  { category_id: 47, label: "ドルフィードリーム" },
+  { category_id: 2, label: "Blythe" },
+];
+
+export function keywordFavorite(overrides: Partial<KeywordFavorite> = {}): KeywordFavorite {
+  return {
+    id: "k1",
+    account_id: "a1",
+    keyword: "豆本",
+    category_id: 22,
+    category_label: "SuperDollfie > 本体",
+    payment_method: "8",
+    price_cap_yen: null,
+    enabled: true,
+    new_arrival_count: 0,
+    created_at: "2026-11-23T21:00:00Z",
+    ...overrides,
+  };
+}
+
+export const NOTE_NEW_ARRIVAL: AppNotification = {
+  id: "n3",
+  favorite_id: "k1",
+  kind: "new_arrival",
+  product_id: 815572,
+  payment_method: "8",
+  message: "新着あり: SD/豆本 新商品（2,200円・キーワード「豆本」）",
+  created_at: "2026-11-23T21:00:00Z",
+  read: false,
 };

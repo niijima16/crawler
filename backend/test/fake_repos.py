@@ -8,6 +8,7 @@ from datetime import datetime
 
 from spider.domain.account import Account, Notification
 from spider.domain.favorite import Favorite, FavoriteState
+from spider.domain.keyword_favorite import KeywordFavorite
 
 
 class MemoryAccounts:
@@ -133,6 +134,82 @@ class MemorySettings:
         self._tick = at
 
 
+class MemoryKeywordFavorites:
+    def __init__(self, writes: "WriteCounter") -> None:
+        self._items: dict[str, KeywordFavorite] = {}
+        self._seen: dict[str, set[int]] = {}
+        self._writes = writes
+
+    async def add(self, favorite: KeywordFavorite) -> None:
+        if favorite.id in self._items:
+            raise KeyError(favorite.id)
+        self._writes.count += 1
+        self._items[favorite.id] = favorite
+        self._seen.setdefault(favorite.id, set())
+
+    async def get(self, favorite_id: str) -> KeywordFavorite | None:
+        return self._items.get(favorite_id)
+
+    async def list_all(self, account_id: str | None = None) -> list[KeywordFavorite]:
+        return [f for f in self._items.values() if account_id in (None, f.account_id)]
+
+    async def list_enabled(self) -> list[KeywordFavorite]:
+        return [f for f in self._items.values() if f.enabled]
+
+    async def update_settings(
+        self, favorite_id: str, payment_method: str, price_cap_yen: int | None
+    ) -> bool:
+        current = self._items.get(favorite_id)
+        if current is None:
+            return False
+        self._writes.count += 1
+        self._items[favorite_id] = current.model_copy(
+            update={"payment_method": payment_method, "price_cap_yen": price_cap_yen}
+        )
+        return True
+
+    async def set_enabled(self, favorite_id: str, enabled: bool) -> bool:
+        current = self._items.get(favorite_id)
+        if current is None:
+            return False
+        self._writes.count += 1
+        self._items[favorite_id] = current.model_copy(update={"enabled": enabled})
+        return True
+
+    async def delete(self, favorite_id: str) -> None:
+        self._writes.count += 1
+        self._items.pop(favorite_id, None)
+        self._seen.pop(favorite_id, None)
+
+    async def delete_for_account(self, account_id: str) -> None:
+        for fid in [f.id for f in self._items.values() if f.account_id == account_id]:
+            await self.delete(fid)
+
+    async def mark_seen(self, favorite_id: str, product_ids: set[int]) -> None:
+        if product_ids:
+            self._writes.count += 1
+            self._seen.setdefault(favorite_id, set()).update(product_ids)
+
+    async def claim_product(self, favorite_id: str, product_id: int) -> bool:
+        seen = self._seen.setdefault(favorite_id, set())
+        if product_id in seen:
+            return False
+        self._writes.count += 1
+        seen.add(product_id)
+        return True
+
+    async def bump_new_arrival(self, favorite_id: str) -> None:
+        current = self._items.get(favorite_id)
+        if current is not None:
+            self._writes.count += 1
+            self._items[favorite_id] = current.model_copy(
+                update={"new_arrival_count": current.new_arrival_count + 1}
+            )
+
+    def seed_seen(self, favorite_id: str, product_ids: set[int]) -> None:
+        self._seen.setdefault(favorite_id, set()).update(product_ids)
+
+
 @dataclass
 class WriteCounter:
     count: int = 0
@@ -145,9 +222,11 @@ class MemoryRepos:
     favorites: MemoryFavorites = field(init=False)
     notifications: MemoryNotifications = field(init=False)
     settings: MemorySettings = field(init=False)
+    keyword_favorites: MemoryKeywordFavorites = field(init=False)
 
     def __post_init__(self) -> None:
         self.accounts = MemoryAccounts(self.writes)
         self.favorites = MemoryFavorites(self.writes)
         self.notifications = MemoryNotifications(self.writes)
         self.settings = MemorySettings(self.writes)
+        self.keyword_favorites = MemoryKeywordFavorites(self.writes)

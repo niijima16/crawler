@@ -120,6 +120,16 @@ async def test_search_products_marks_stock_from_the_available_only_search() -> N
     assert seen == [("ALL", {1, 2})]
 
 
+async def test_search_products_within_a_category() -> None:
+    all_url = "https://www.dollyteria.com/product-list/22?keyword=%E8%B1%86%E6%9C%AC"
+    stock_url = all_url + "&available=1"
+    client = PagesClient({all_url: "ALL", stock_url: "STOCK"})
+
+    await search_products(client, "豆本", lambda html, ids: [], lambda html: set(), category_id=22)
+
+    assert sorted(client.requested) == sorted([all_url, stock_url])
+
+
 def _runtime(clock: FakeTime) -> PreviewRuntime:
     return PreviewRuntime(sleep=clock.sleep, rng=lambda: 1.0, now=clock)
 

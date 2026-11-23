@@ -8,11 +8,12 @@ from cryptography.fernet import Fernet
 from fastapi.testclient import TestClient
 
 from spider.application.favorites import FavoriteDeps
+from spider.application.keyword_favorites import KeywordFavoriteDeps
 from spider.application.ports import LoginFailed, UpstreamError
 from spider.application.preview import CheckoutParsers, PreviewConfig
 from spider.application.retry import PreviewRuntime
 from spider.application.use_cases import SALES_HISTORY_URL, ProductNotFound
-from spider.domain.account import Account
+from spider.domain.account import Account, Notification
 from spider.infrastructure.history_parser import extract_orders
 from spider.infrastructure.product_parser import extract_latest_product_name
 from spider.infrastructure.product_parsers import (
@@ -41,6 +42,7 @@ from test.fakes import (
 BODY = {"email": "a@example.test", "password": "secret-pw"}
 SEARCH_ALL = "https://www.dollyteria.com/product-list?keyword=%E8%B1%86%E6%9C%AC"
 SEARCH_STOCK = SEARCH_ALL + "&available=1"
+CAT_SEARCH = "https://www.dollyteria.com/product-list/22?keyword=%E8%B1%86%E6%9C%AC"
 
 
 class FakeClient:
@@ -87,6 +89,8 @@ class Factory:
             f"https://www.dollyteria.com/product/{810297}": html("product_page_purchasable.html"),
             SEARCH_ALL: html("product_list_keyword.html"),
             SEARCH_STOCK: html("product_list_keyword_available.html"),
+            CAT_SEARCH: html("product_list_keyword.html"),
+            CAT_SEARCH + "&available=1": html("product_list_keyword_available.html"),
         }
         client = FakeClient(pages, **self._kwargs)
         self.created.append(client)
@@ -101,6 +105,7 @@ def _deps(
     repos: MemoryRepos | None = None,
 ) -> Dependencies:
     clock = FakeTime()
+    shared_repos = repos or MemoryRepos()
     return Dependencies(
         client_factory=factory,
         extract_latest_name=extract_latest_product_name,
@@ -124,7 +129,8 @@ def _deps(
         ),
         runtime=PreviewRuntime(sleep=clock.sleep, rng=lambda: 1.0, now=clock),
         login_deadline_seconds=15.0,
-        favorite_deps=_favorite_deps(factory, clock, repos or MemoryRepos()),
+        favorite_deps=_favorite_deps(factory, clock, shared_repos),
+        keyword_deps=_keyword_deps(factory, clock, shared_repos),
         on_startup=_noop,
     )
 
@@ -157,6 +163,25 @@ def _favorite_deps(factory: Any, clock: FakeTime, repos: MemoryRepos) -> Favorit
         extract_product_page=extract_product_page,
         runtime=PreviewRuntime(sleep=clock.sleep, rng=lambda: 1.0, now=clock),
         login_deadline_seconds=15.0,
+    )
+
+
+def _keyword_deps(factory: Any, clock: FakeTime, repos: MemoryRepos) -> KeywordFavoriteDeps:
+    counter = {"n": 0}
+
+    def new_id() -> str:
+        counter["n"] += 1
+        return f"kw{counter['n']}"
+
+    return KeywordFavoriteDeps(
+        keyword_favorites=repos.keyword_favorites,
+        accounts=repos.accounts,
+        clock=_FixedClock(),
+        new_id=new_id,
+        client_factory=factory,
+        extract_search_results=extract_search_results,
+        extract_product_ids=extract_product_ids,
+        runtime=PreviewRuntime(sleep=clock.sleep, rng=lambda: 1.0, now=clock),
     )
 
 
@@ -731,3 +756,100 @@ def test_handoff_with_the_credit_card_is_422() -> None:
 
     assert response.status_code == 422
     assert response.json()["detail"] == "unsupported_payment_method:preview"
+
+
+# --- ジャンル・キーワードお気に入り -------------------------------------------------
+
+KW = {"account_id": "", "keyword": "豆本", "category_id": 22}
+
+
+def test_genres_lists_the_dropdown_options() -> None:
+    with _app(Factory()) as client:
+        response = client.get("/api/genres")
+
+    genres = response.json()
+    assert response.status_code == 200
+    assert {"category_id": 22, "label": "SuperDollfie > 本体"} in genres
+    assert len(genres) >= 8
+
+
+def test_keyword_favorite_crud() -> None:
+    with _app(Factory()) as client:
+        account_id = _with_account(client)
+
+        added = client.post(
+            "/api/keyword-favorites",
+            json={"account_id": account_id, "keyword": "豆本", "price_cap_yen": 3000},
+        )
+        listed = client.get("/api/keyword-favorites", params={"account_id": account_id})
+        patched = client.patch(
+            f"/api/keyword-favorites/{added.json()['id']}",
+            json={"payment_method": "3", "price_cap_yen": None},
+        )
+        toggled = client.put(
+            f"/api/keyword-favorites/{added.json()['id']}/enabled", json={"enabled": False}
+        )
+        removed = client.delete(f"/api/keyword-favorites/{added.json()['id']}")
+
+    assert added.status_code == 200
+    body = added.json()
+    assert (body["keyword"], body["category_id"], body["category_label"]) == (
+        "豆本",
+        22,
+        "SuperDollfie > 本体",
+    )
+    assert body["payment_method"] == "8" and body["price_cap_yen"] == 3000
+    assert listed.json() == [body]
+    assert patched.json()["payment_method"] == "3" and patched.json()["price_cap_yen"] is None
+    assert toggled.json()["enabled"] is False
+    assert removed.status_code == 204
+
+
+def test_keyword_favorite_errors() -> None:
+    with _app(Factory()) as client:
+        account_id = _with_account(client)
+        base = {"account_id": account_id, "keyword": "豆本", "category_id": 22}
+
+        assert (
+            client.post("/api/keyword-favorites", json={**base, "account_id": "no"}).status_code
+            == 404
+        )
+        unknown_genre = client.post("/api/keyword-favorites", json={**base, "category_id": 999999})
+        assert unknown_genre.status_code == 422
+        card = client.post("/api/keyword-favorites", json={**base, "payment_method": "10000028"})
+        assert card.status_code == 422
+        assert client.post("/api/keyword-favorites", json=base).status_code == 200
+        dup = client.post("/api/keyword-favorites", json=base)
+        assert (dup.status_code, dup.json()["detail"]) == (409, "duplicate_favorite")
+        assert (
+            client.post("/api/keyword-favorites", json={"account_id": account_id}).status_code
+            == 422
+        )
+        assert (
+            client.patch(
+                "/api/keyword-favorites/missing",
+                json={"payment_method": "8", "price_cap_yen": None},
+            ).status_code
+            == 404
+        )
+        assert client.delete("/api/keyword-favorites/missing").status_code == 404
+
+
+def test_notifications_include_product_and_payment_for_new_arrivals() -> None:
+    repos = MemoryRepos()
+    note = Notification(
+        id="n1",
+        favorite_id="k1",
+        kind="new_arrival",
+        message="新着",
+        created_at=datetime(2026, 11, 23, tzinfo=UTC),
+        read=False,
+        product_id=807736,
+        payment_method="8",
+    )
+    with TestClient(create_app(_deps(Factory(), repos=repos))) as client:
+        asyncio.run(repos.notifications.add(note))
+        response = client.get("/api/notifications")
+
+    item = response.json()["items"][0]
+    assert item["product_id"] == 807736 and item["payment_method"] == "8"

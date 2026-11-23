@@ -1,6 +1,6 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { NOTE_PURCHASED, NOTE_REJECTED, STATUS } from "../test-data";
+import { NOTE_NEW_ARRIVAL, NOTE_PURCHASED, NOTE_REJECTED, STATUS } from "../test-data";
 import { json, mockApi } from "../test-utils";
 import { AutoPurchaseTab } from "./AutoPurchaseTab";
 
@@ -9,16 +9,18 @@ const NOW = new Date("2026-11-22T11:00:00Z");
 
 function setup(props: Partial<Parameters<typeof AutoPurchaseTab>[0]> = {}) {
   const onChanged = vi.fn();
+  const onOpenConfirmation = vi.fn();
   render(
     <AutoPurchaseTab
       status={STATUS}
       notifications={{ unread: 1, items: [NOTE_REJECTED, NOTE_PURCHASED] }}
       now={NOW}
       onChanged={onChanged}
+      onOpenConfirmation={onOpenConfirmation}
       {...props}
     />,
   );
-  return { onChanged, tab: screen.getByRole("region", { name: "自動購入" }) };
+  return { onChanged, onOpenConfirmation, tab: screen.getByRole("region", { name: "自動購入" }) };
 }
 
 afterEach(() => vi.unstubAllGlobals());
@@ -85,5 +87,23 @@ describe("AutoPurchaseTab", () => {
     setup({ status: null });
 
     expect(screen.getByRole("region", { name: "自動購入" })).toHaveTextContent("読み込み中");
+  });
+});
+
+describe("AutoPurchaseTab new arrivals", () => {
+  it("offers 確認画面を開く on a new-arrival notification and reports it", async () => {
+    const { onOpenConfirmation } = setup({
+      notifications: { unread: 1, items: [NOTE_NEW_ARRIVAL] },
+    });
+
+    await user.click(screen.getByRole("button", { name: "確認画面を開く" }));
+
+    expect(onOpenConfirmation).toHaveBeenCalledWith(NOTE_NEW_ARRIVAL);
+  });
+
+  it("does not show 確認画面を開く on non-arrival notifications", () => {
+    setup({ notifications: { unread: 1, items: [NOTE_REJECTED] } });
+
+    expect(screen.queryByRole("button", { name: "確認画面を開く" })).not.toBeInTheDocument();
   });
 });

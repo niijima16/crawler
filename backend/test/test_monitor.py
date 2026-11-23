@@ -16,7 +16,9 @@ from spider.infrastructure.product_parsers import (
     extract_confirm,
     extract_order_form,
     extract_payment_options,
+    extract_product_ids,
     extract_product_page,
+    extract_search_results,
     is_in_cart,
     is_recaptcha_rejected,
 )
@@ -85,6 +87,9 @@ class Env:
             stale_purchasing_seconds=900.0,
             nightly_parallelism=nightly_parallelism,
             nightly_retry_interval_seconds=nightly_retry_interval_seconds,
+            keyword_favorites=self.repos.keyword_favorites,
+            extract_search_results=extract_search_results,
+            extract_product_ids=extract_product_ids,
             new_id=self._next_id,
         )
 

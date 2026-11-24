@@ -2,13 +2,13 @@
   "manifest_version": 3,
   "name": "Pickup Assistant Handoff",
   "version": "0.1.0",
-  "description": "Pickup Assistant の確認画面を、用意済みのセッションでブラウザに開き、同意チェックと購入ボタンを目立たせます。混雑（503）のときは確認画面を自動で再読み込みします（チェックや購入は押しません）。",
+  "description": "Pickup Assistant の確認画面を、用意済みのセッションでブラウザに開き、同意チェックとボタンを目立たせます。混雑（503）のときは確認画面を自動で再読み込みします（チェックやは押しません）。",
   "permissions": [
     "cookies",
     "webNavigation"
   ],
   "host_permissions": [
-    "https://www.example.com/*"
+    "https://www.dollyteria.com/*"
   ],
   "background": {
     "service_worker": "background.js"
@@ -26,7 +26,7 @@
     },
     {
       "matches": [
-        "https://www.example.com/cart/confirm*"
+        "https://www.dollyteria.com/cart/confirm*"
       ],
       "js": [
         "confirm.js"

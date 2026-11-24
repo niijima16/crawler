@@ -65,7 +65,7 @@ async def register_keyword_favorite(
         new_arrival_count=0,
         created_at=deps.clock.now(),
     )
-    # seen は空で作る。最初の監視で、既存の購入可能な一致商品も1回ずつトリガーする。
+    # seen は空で作る。最初の監視で、既存の可能な一致商品も1回ずつトリガーする。
     await deps.keyword_favorites.add(favorite)
     return favorite
 

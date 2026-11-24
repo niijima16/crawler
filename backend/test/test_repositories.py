@@ -114,7 +114,7 @@ def _note(nid: str, minutes: int, read: bool = False) -> Notification:
 
 
 async def test_accounts_store_the_encrypted_password_apart_from_the_account(repos: Repos) -> None:
-    account = Account(id="a1", label="テスト用 A", email="a@example.test")
+    account = Account(id="a1", label="テスト用 A", email="a@dollyteria.test")
 
     await repos.accounts.add(account, "ENCRYPTED")
 
@@ -124,7 +124,7 @@ async def test_accounts_store_the_encrypted_password_apart_from_the_account(repo
 
 
 async def test_accounts_can_be_deleted(repos: Repos) -> None:
-    await repos.accounts.add(Account(id="a1", label="A", email="a@example.test"), "X")
+    await repos.accounts.add(Account(id="a1", label="A", email="a@dollyteria.test"), "X")
 
     await repos.accounts.delete("a1")
 
@@ -178,7 +178,7 @@ async def test_transition_is_conditional_on_state_and_version(repos: Repos) -> N
     later = T0 + timedelta(minutes=1)
 
     assert await repos.favorites.transition("f1", "watching", "purchasing", 0, later)
-    # 同じバージョン・同じ元の状態での2回目は失敗する（二重購入の防止）
+    # 同じバージョン・同じ元の状態での2回目は失敗する（二重の防止）
     assert not await repos.favorites.transition("f1", "watching", "purchasing", 0, later)
     # 元の状態が違っても失敗する
     assert not await repos.favorites.transition("f1", "watching", "stopped", 1, later)

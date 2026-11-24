@@ -91,7 +91,7 @@ async def delete_account(deps: FavoriteDeps, account_id: str) -> None:
 
 
 def _check_payment_method(payment_method_id: str) -> None:
-    """自動購入は注文確定まで進むため、サイト内で完結する支払方法だけを許可する。"""
+    """自動は注文確定まで進むため、サイト内で完結する支払方法だけを許可する。"""
     try:
         method = get_payment_method(payment_method_id)
     except KeyError:

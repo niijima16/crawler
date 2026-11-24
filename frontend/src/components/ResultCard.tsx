@@ -20,15 +20,15 @@ function OrderBanner({ order }: { order: OrderResult }) {
       <div className="banner warn">
         <b>注文は受理されませんでした（注文は作られていません）。</b>{" "}
         {order.reason === "recaptcha"
-          ? "サイトの reCAPTCHA により拒否されました。購入はご自身でブラウザから行ってください。"
-          : "購入はご自身でブラウザから行ってください。"}
+          ? "サイトの reCAPTCHA により拒否されました。はご自身でブラウザから行ってください。"
+          : "はご自身でブラウザから行ってください。"}
       </div>
     );
   }
   return (
     <div className="banner warn">
       <b>注文の成否が不明です。</b>{" "}
-      購入履歴を確認してください。再実行はしないでください（二重注文のおそれ）。
+      履歴を確認してください。再実行はしないでください（二重注文のおそれ）。
     </div>
   );
 }
@@ -62,7 +62,7 @@ export function ResultCard({ outcome }: { outcome: Outcome }) {
       ) : (
         <div className="banner ok flush">
           <b>確認画面まで進めました。</b>{" "}
-          注文は確定していません（購入はご自身でブラウザから行ってください）。
+          注文は確定していません（はご自身でブラウザから行ってください）。
         </div>
       )}
       <dl>

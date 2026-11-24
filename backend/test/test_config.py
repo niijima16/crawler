@@ -1,7 +1,12 @@
 import pytest
 
 from spider.application.preview import PreviewConfig
-from spider.config import MonitorSettings, load_monitor_settings, load_preview_config
+from spider.config import (
+    MonitorSettings,
+    load_consent_cdp_url,
+    load_monitor_settings,
+    load_preview_config,
+)
 
 
 def test_defaults_are_safe() -> None:
@@ -79,3 +84,12 @@ def test_monitor_nightly_values_from_the_environment() -> None:
 def test_monitor_nightly_out_of_range_fails(env: dict[str, str]) -> None:
     with pytest.raises(ValueError):
         load_monitor_settings(env)
+
+
+def test_consent_cdp_url_is_disabled_unless_set() -> None:
+    assert load_consent_cdp_url({}) is None
+    assert load_consent_cdp_url({"AUTO_CONSENT_CDP_URL": ""}) is None
+    assert (
+        load_consent_cdp_url({"AUTO_CONSENT_CDP_URL": "http://host.docker.internal:9222"})
+        == "http://host.docker.internal:9222"
+    )

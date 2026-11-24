@@ -15,8 +15,8 @@ const MAX_FAVORITES = 20;
 
 const STATE_LABEL: Record<FavoriteState, { text: string; className: string }> = {
   watching: { text: "監視中", className: "watch" },
-  purchasing: { text: "購入処理中", className: "buying" },
-  purchased: { text: "購入済み", className: "done" },
+  purchasing: { text: "処理中", className: "buying" },
+  purchased: { text: "済み", className: "done" },
   rejected: { text: "受理されず", className: "rej" },
   unknown: { text: "成否不明", className: "rej" },
   stopped: { text: "停止", className: "stop" },
@@ -100,7 +100,7 @@ export function FavoritesTab({
         {favorites.length === 0 ? (
           <p className="empty">
             お気に入りはまだありません。「商品を探す」で ☆
-            を押すと、購入可能になったとき自動で注文確定まで進みます。
+            を押すと、可能になったとき自動で注文確定まで進みます。
           </p>
         ) : (
           <ul className="favlist">
@@ -228,7 +228,7 @@ export function FavoritesTab({
         </div>
         {keywordFavorites.length === 0 ? (
           <p className="empty">
-            キーワードお気に入りはまだありません。キーワードとジャンルで登録すると、新しく出てきた購入可能な商品を検知して通知します。
+            キーワードお気に入りはまだありません。キーワードとジャンルで登録すると、新しく出てきた可能な商品を検知して通知します。
           </p>
         ) : (
           <ul className="favlist">

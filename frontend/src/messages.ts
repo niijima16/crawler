@@ -15,7 +15,7 @@ export function runError(kind: ApiErrorKind): { title: string; detail: string } 
     case "not_found":
       return { title: "商品が見つかりません。", detail: "商品 ID を確認してください。" };
     case "not_purchasable":
-      return { title: "この商品は購入できません。", detail: "売り切れの可能性があります。" };
+      return { title: "この商品はできません。", detail: "売り切れの可能性があります。" };
     case "payment_unavailable":
       return {
         title: "選んだ支払方法は、この商品では選べません。",
@@ -53,11 +53,11 @@ export function favoriteError(kind: ApiErrorKind): string {
     case "limit":
       return "お気に入りは 20 件までです。解除してから登録してください。";
     case "unsupported":
-      return "この支払方法では自動購入できません。店頭支払・代金引換・銀行振込・郵便振替を選んでください。";
+      return "この支払方法では自動できません。店頭支払・代金引換・銀行振込・郵便振替を選んでください。";
     case "not_found":
       return "商品またはアカウントが見つかりません。";
     case "invalid_transition":
-      return "購入処理中のため、この操作はできません。";
+      return "処理中のため、この操作はできません。";
     default:
       return "サイトに接続できません。時間をおいて再度お試しください。";
   }

@@ -67,3 +67,8 @@ def load_monitor_settings(env: Mapping[str, str]) -> MonitorSettings:
 
 def load_category_cache_ttl(env: Mapping[str, str]) -> float:
     return _bounded(env, "CATEGORY_CACHE_TTL_SECONDS", 3600.0, 1, 86400)
+
+
+def load_consent_cdp_url(env: Mapping[str, str]) -> str | None:
+    """同意チェックの自動入力に使う Chrome の CDP の URL。空・未設定なら無効。"""
+    return env.get("AUTO_CONSENT_CDP_URL") or None

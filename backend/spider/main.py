@@ -1,3 +1,4 @@
+import logging
 import os
 import random
 import time
@@ -10,9 +11,11 @@ from spider.application.retry import PreviewRuntime
 from spider.config import (
     LOGIN_CHECK_DEADLINE_SECONDS,
     load_category_cache_ttl,
+    load_consent_cdp_url,
     load_preview_config,
 )
 from spider.infrastructure.category_provider import SiteCategoryProvider
+from spider.infrastructure.cdp_consent import CdpConsentAssistant
 from spider.infrastructure.history_parser import extract_orders
 from spider.infrastructure.http_client import HttpSiteClient
 from spider.infrastructure.product_parser import extract_latest_product_name
@@ -30,6 +33,8 @@ from spider.infrastructure.product_parsers import (
 from spider.presentation.api import Dependencies, create_app
 from spider.wiring import SystemClock, build_store, new_id
 
+# 同意チェックの自動入力の結果を docker compose logs で見られるようにする（worker と同じ形式）
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 _store, _setup = build_store(os.environ)
 _runtime = PreviewRuntime(sleep=sleep, rng=random.random, now=time.monotonic)
 _categories = SiteCategoryProvider(
@@ -38,6 +43,7 @@ _categories = SiteCategoryProvider(
     now=time.monotonic,
     ttl_seconds=load_category_cache_ttl(os.environ),
 )
+_consent_cdp_url = load_consent_cdp_url(os.environ)
 
 app = create_app(
     Dependencies(
@@ -80,5 +86,6 @@ app = create_app(
             new_id=new_id,
         ),
         on_startup=_setup,
+        consent_assistant=CdpConsentAssistant(_consent_cdp_url) if _consent_cdp_url else None,
     )
 )

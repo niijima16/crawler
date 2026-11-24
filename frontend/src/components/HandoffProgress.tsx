@@ -19,6 +19,13 @@ type Props = {
   extensionInstalled: boolean;
   onReady: (handoff: Handoff) => void;
   onClose: () => void;
+  /** 新着通知から自動で開いた引き継ぎ（サーバーに長く粘らせる） */
+  auto?: boolean;
+  /** 自動の引き継ぎを何回目に始め直したか（1 が最初） */
+  attempt?: number;
+  /** 順番待ちの新着通知の件数 */
+  queued?: number;
+  onError?: (reason: string) => void;
 };
 
 export function HandoffProgress({
@@ -28,16 +35,22 @@ export function HandoffProgress({
   extensionInstalled,
   onReady,
   onClose,
+  auto = false,
+  attempt = 1,
+  queued = 0,
+  onError,
 }: Props) {
   const [states, setStates] = useState<Partial<Record<PreviewStepName, StepState>>>({});
   const [error, setError] = useState<string | null>(null);
   const [finished, setFinished] = useState(false);
   const onReadyRef = useRef(onReady);
   onReadyRef.current = onReady;
+  const onErrorRef = useRef(onError);
+  onErrorRef.current = onError;
 
   useEffect(() => {
     const source = openHandoffStream(
-      { account_id: accountId, product_id: productId, payment_method: paymentMethod },
+      { account_id: accountId, product_id: productId, payment_method: paymentMethod, auto },
       {
         onStep: (step) =>
           setStates((prev) => ({
@@ -51,11 +64,14 @@ export function HandoffProgress({
           setFinished(true);
           onReadyRef.current(handoff);
         },
-        onError: (reason) => setError(reason),
+        onError: (reason) => {
+          setError(reason);
+          onErrorRef.current?.(reason);
+        },
       },
     );
     return () => source.close();
-  }, [accountId, productId, paymentMethod]);
+  }, [accountId, productId, paymentMethod, auto]);
 
   return (
     <section className="card" aria-label="確認画面への引き継ぎ">
@@ -78,6 +94,14 @@ export function HandoffProgress({
           );
         })}
       </ul>
+      {attempt > 1 && (
+        <div className="banner warn">混雑のため、引き継ぎをやり直しています（{attempt}回目）</div>
+      )}
+      {queued > 0 && (
+        <div className="banner warn">
+          順番待ち: {queued}件（この引き継ぎが終わったら次を開きます）
+        </div>
+      )}
       {error ? (
         <div className="banner err">
           引き継ぎに失敗しました（{error}）。もう一度お試しください。
@@ -85,7 +109,7 @@ export function HandoffProgress({
       ) : finished ? (
         <div className="banner ok">
           {extensionInstalled
-            ? "確認画面をブラウザで開きました。内容を確認し、同意のうえ「購入する」を押してください。"
+            ? "確認画面をブラウザで開きました。内容を確認し、同意のうえ「する」を押してください。"
             : "引き継ぎの準備ができました。拡張機能を入れると確認画面を自動で開けます。"}
         </div>
       ) : null}

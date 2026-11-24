@@ -30,6 +30,10 @@ type OnStep = Callable[[PreviewStep], None]
 type Emit = Callable[[PreviewStepName, PreviewStepStatus, int], None]
 
 MAX_PARALLELISM = 5
+# 新着通知から自動で開いた引き継ぎは、1セッションで長く粘り、
+# 失敗したステップだけを短い間隔（0〜0.5秒）でやり直す
+AUTO_HANDOFF_DEADLINE_SECONDS = 600.0
+AUTO_HANDOFF_MAX_DELAY_SECONDS = 0.5
 CONFIRM_URL = f"{SITE}/cart/confirm"
 CUSTOMER_URL = f"{SITE}/cart/customer"
 SHIPPING_URL = f"{SITE}/cart/shipping"

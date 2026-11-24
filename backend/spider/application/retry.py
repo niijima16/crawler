@@ -29,6 +29,15 @@ def fixed_delay(base: float) -> Callable[[int, Callable[[], float]], float]:
     return delay
 
 
+def jitter_delay(max_seconds: float) -> Callable[[int, Callable[[], float]], float]:
+    """0〜max_seconds のランダムな待ち。attempt に依らず延びない（自動の引き継ぎで粘るとき用）。"""
+
+    def delay(attempt: int, rng: Callable[[], float]) -> float:
+        return rng() * max_seconds
+
+    return delay
+
+
 async def retrying[T](
     step: Callable[[], Awaitable[T]],
     *,

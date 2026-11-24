@@ -1,8 +1,8 @@
-// 受け取ったセッション（PHPSESSID）を example.com にセットし、確認画面のタブを開く。
+// 受け取ったセッション（PHPSESSID）を dollyteria.com にセットし、確認画面のタブを開く。
 // 開いた確認画面が 503/読み込み失敗のときは、そのタブを自動で再読み込みする
-// （間隔 0.1秒＋ゆらぎ最大0.5秒・開始から約1分まで）。再読み込みは GET のみ。
-const CONFIRM_URL = "https://www.example.com/cart/confirm";
-const RETRY_BUDGET_MS = 60_000;
+// （間隔 0.1秒＋ゆらぎ最大0.5秒・開始から約3分まで）。再読み込みは GET のみ。
+const CONFIRM_URL = "https://www.dollyteria.com/cart/confirm";
+const RETRY_BUDGET_MS = 180_000;
 
 // このタブは「引き継ぎで開いたタブ」。値は開始時刻（ms）。混雑リロードの対象。
 const managed = {};

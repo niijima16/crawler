@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError, api } from "./api";
+import { type Arrival, collectArrivals, enqueue, loadAutoOpen, saveAutoOpen } from "./autoOpen";
 import { AccountCard } from "./components/AccountCard";
 import { AutoPurchaseTab } from "./components/AutoPurchaseTab";
 import { FavoritesTab } from "./components/FavoritesTab";
@@ -29,6 +30,19 @@ import type {
 
 const DEFAULT_PAYMENT_ID = "8";
 const POLL_MS = 30_000;
+// 新着通知はすぐ開けるよう、通知だけ短い間隔で取得する（自分の backend への問い合わせのみ）
+const NOTE_POLL_MS = 1_000;
+// 自動の引き継ぎが混雑で終わったら、0〜0.5秒待ってやり直す（売り切れなどで止まるまで）
+const RESTART_MAX_DELAY_MS = 500;
+const RESTART_REASONS = new Set(["timeout", "upstream_error"]);
+
+type HandoffRun = {
+  id: number;
+  productId: number;
+  paymentMethod: string;
+  auto: boolean;
+  attempt: number;
+};
 
 export function App() {
   const [tab, setTab] = useState<Tab>("search");
@@ -42,7 +56,12 @@ export function App() {
   const [running, setRunning] = useState(false);
   const [outcome, setOutcome] = useState<Outcome | null>(null);
   const [confirming, setConfirming] = useState(false);
-  const [handoff, setHandoff] = useState<{ productId: number; paymentMethod: string } | null>(null);
+  const [handoff, setHandoff] = useState<HandoffRun | null>(null);
+  const handoffIds = useRef(0);
+  const [autoOpen, setAutoOpen] = useState(loadAutoOpen);
+  const autoOpenRef = useRef(autoOpen);
+  const seenRef = useRef<Set<string> | null>(null);
+  const [queue, setQueue] = useState<Arrival[]>([]);
   const [notice, setNotice] = useState<string | null>(null);
   const [favorites, setFavorites] = useState<Favorite[]>([]);
   const [genres, setGenres] = useState<Genre[]>([]);
@@ -76,9 +95,28 @@ export function App() {
 
   useEffect(loadFavorites, [loadFavorites]);
 
+  const loadingNotes = useRef(false);
+  const loadNotes = useCallback(() => {
+    if (loadingNotes.current) return; // 前の取得が終わっていなければ重ねない
+    loadingNotes.current = true;
+    api
+      .notifications()
+      .then(
+        (list) => {
+          setNotes(list);
+          const { arrivals, seen } = collectArrivals(list.items, seenRef.current);
+          seenRef.current = seen;
+          if (autoOpenRef.current && arrivals.length > 0) setQueue((q) => enqueue(q, arrivals));
+        },
+        () => undefined,
+      )
+      .finally(() => {
+        loadingNotes.current = false;
+      });
+  }, []);
+
   const loadStatus = useCallback(() => {
     setNow(new Date());
-    api.notifications().then(setNotes, () => undefined);
     api.autoStatus().then(setStatus, () => undefined);
   }, []);
 
@@ -87,6 +125,12 @@ export function App() {
     const timer = setInterval(loadStatus, POLL_MS);
     return () => clearInterval(timer);
   }, [loadStatus]);
+
+  useEffect(() => {
+    loadNotes();
+    const timer = setInterval(loadNotes, NOTE_POLL_MS);
+    return () => clearInterval(timer);
+  }, [loadNotes]);
 
   const locked = accountId === null;
   const account = accounts?.find((a) => a.id === accountId) ?? null;
@@ -153,9 +197,40 @@ export function App() {
   }
 
   // 引き継ぎ（確認画面まで）を開始する。進捗は HandoffProgress が SSE で表示する。
-  const startHandoff = useCallback((productId: number, paymentMethod: string) => {
-    setHandoff({ productId, paymentMethod });
+  const startHandoff = useCallback((productId: number, paymentMethod: string, auto = false) => {
+    handoffIds.current += 1;
+    setHandoff({ id: handoffIds.current, productId, paymentMethod, auto, attempt: 1 });
   }, []);
+
+  // 引き継ぎが動いていなければ、順番待ちの一番新しい新着通知を開く（同時に1件だけ）
+  useEffect(() => {
+    if (handoff !== null || accountId === null || queue.length === 0) return;
+    const [next, ...rest] = queue;
+    setQueue(rest);
+    startHandoff(next.product_id, next.payment_method ?? DEFAULT_PAYMENT_ID, true);
+  }, [handoff, accountId, queue, startHandoff]);
+
+  function changeAutoOpen(on: boolean) {
+    setAutoOpen(on);
+    autoOpenRef.current = on;
+    saveAutoOpen(on);
+    if (!on) setQueue([]);
+  }
+
+  // 自動の引き継ぎだけ: 混雑ならやり直し、それ以外（売り切れなど）で止まったらすぐ次へ
+  function handoffFailed(run: HandoffRun, reason: string) {
+    // スイッチ OFF の後は自動の扱いをやめ、手動と同じくエラーを表示したままにする
+    if (!run.auto || !autoOpenRef.current) return;
+    if (RESTART_REASONS.has(reason)) {
+      setTimeout(() => {
+        setHandoff((h) =>
+          h?.id === run.id && autoOpenRef.current ? { ...h, attempt: h.attempt + 1 } : h,
+        );
+      }, Math.random() * RESTART_MAX_DELAY_MS);
+    } else {
+      setHandoff((h) => (h?.id === run.id ? null : h));
+    }
+  }
 
   const openArrival = useCallback(
     (note: AppNotification) => {
@@ -257,6 +332,8 @@ export function App() {
             now={now}
             onChanged={loadStatus}
             onOpenConfirmation={openArrival}
+            autoOpen={autoOpen}
+            onAutoOpenChange={changeAutoOpen}
           />
         </div>
       )}
@@ -272,6 +349,7 @@ export function App() {
       {handoff && accountId !== null && (
         <div className="backdrop">
           <HandoffProgress
+            key={`${handoff.id}-${handoff.attempt}`}
             accountId={accountId}
             productId={handoff.productId}
             paymentMethod={handoff.paymentMethod}
@@ -280,10 +358,14 @@ export function App() {
               if (isExtensionInstalled()) openConfirmation(h.cookie_value);
             }}
             onClose={() => setHandoff(null)}
+            auto={handoff.auto}
+            attempt={handoff.attempt}
+            queued={queue.length}
+            onError={(reason) => handoffFailed(handoff, reason)}
           />
         </div>
       )}
-      <footer className="foot">Pickup Assistant — 購入の確定はサイトの画面で行います</footer>
+      <footer className="foot">Pickup Assistant — の確定はサイトの画面で行います</footer>
     </div>
   );
 }

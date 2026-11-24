@@ -14,7 +14,7 @@ dist/
 # 環境変数・秘密情報（compose の .env など）
 .env
 .env.*
-!.env.example
+!.env.dollyteria
 
 # OS
 .DS_Store

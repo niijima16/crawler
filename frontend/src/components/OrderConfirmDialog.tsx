@@ -24,7 +24,7 @@ export function OrderConfirmDialog({ product, paymentLabel, account, onConfirm, 
           <dt>アカウント</dt>
           <dd>{account}</dd>
         </dl>
-        <p className="muted">「購入する」を 1 回だけ送信します。取り消しにくい操作です。</p>
+        <p className="muted">「する」を 1 回だけ送信します。取り消しにくい操作です。</p>
         <div className="row end">
           <button type="button" className="secondary" onClick={onCancel}>
             キャンセル

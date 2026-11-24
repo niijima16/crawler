@@ -100,6 +100,8 @@ export type HandoffStreamParams = {
   account_id: string;
   product_id: number;
   payment_method: string;
+  /** 新着通知から自動で開いた引き継ぎ。サーバーは1セッションで長く粘る */
+  auto?: boolean;
 };
 
 export type HandoffStreamHandlers = {
@@ -118,6 +120,7 @@ export function openHandoffStream(
     product_id: String(params.product_id),
     payment_method: params.payment_method,
   });
+  if (params.auto) query.set("auto", "true");
   const source = new EventSource(`/api/store-pickup-preview/stream?${query}`);
   source.addEventListener("step", (event) => {
     handlers.onStep(JSON.parse((event as MessageEvent).data) as PreviewStep);

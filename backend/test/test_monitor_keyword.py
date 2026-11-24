@@ -160,7 +160,7 @@ async def test_new_in_stock_arrivals_are_notified_and_not_purchased() -> None:
     assert {n.kind for n in notes} == {"new_arrival"}
     assert {n.product_id for n in notes} == {775386, 810297}  # 売り切れ 810296 は含まない
     assert all(n.payment_method == "8" for n in notes)
-    # 購入（確認画面への POST）はしない: SearchClient は post を実装していない＝呼ばれていない
+    # （確認画面への POST）はしない: SearchClient は post を実装していない＝呼ばれていない
     fav = await repos.keyword_favorites.get("k1")
     assert fav is not None and fav.new_arrival_count == 2
 

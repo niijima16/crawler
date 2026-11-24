@@ -47,7 +47,7 @@ export function OptionsCard({
             options={[
               { value: "check", label: "確認画面まで" },
               { value: "order", label: "注文確定まで", disabled: submitBlocked, danger: true },
-              { value: "handoff", label: "ブラウザで購入", disabled: !selected?.preview_supported },
+              { value: "handoff", label: "ブラウザで", disabled: !selected?.preview_supported },
             ]}
           />
         </div>
@@ -88,7 +88,7 @@ export function OptionsCard({
       )}
       {mode === "order" && (
         <div className="banner order">
-          <b>注文確定モード</b> — 実行すると「購入する」を 1
+          <b>注文確定モード</b> — 実行すると「する」を 1
           回送信します（取り消しにくい操作）。実行前に確認ダイアログが出ます。
         </div>
       )}

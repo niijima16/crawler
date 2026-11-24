@@ -8,6 +8,9 @@ COPY spider ./spider
 RUN uv sync --frozen --no-dev
 
 FROM python:3.14-slim
+# Playwright のドライバー（node）が libatomic を必要とする（同意チェックの自動入力。CDP 接続のみでブラウザは入れない）
+RUN apt-get update && apt-get install -y --no-install-recommends libatomic1 \
+  && rm -rf /var/lib/apt/lists/*
 RUN useradd --create-home app && mkdir /secrets && chown app /secrets
 WORKDIR /app
 COPY --from=build /app /app

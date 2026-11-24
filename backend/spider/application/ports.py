@@ -19,7 +19,7 @@ class PreviewTimeout(Exception):
 
 
 class NotPurchasable(Exception):
-    """商品を購入できない（売り切れなど。カートに入らない）。"""
+    """商品をできない（売り切れなど。カートに入らない）。"""
 
 
 class PaymentMethodUnavailable(Exception):
@@ -52,6 +52,12 @@ class SiteClient(Protocol):
     def get_cookie(self, name: str) -> str | None: ...
 
     async def aclose(self) -> None: ...
+
+
+class ConfirmPageAssistant(Protocol):
+    """ブラウザに引き継いだ確認画面を補助する（同意チェックを入れる。購入ボタンは押さない）。"""
+
+    async def assist(self, confirm_url: str) -> None: ...
 
 
 class CategoryProvider(Protocol):
@@ -110,7 +116,7 @@ class FavoriteRepository(Protocol):
     async def list_all(self, account_id: str | None = None) -> list[Favorite]: ...
 
     async def list_active(self) -> list[Favorite]:
-        """監視中（watching）と購入処理中（purchasing）。読み取りのみ。"""
+        """監視中（watching）と処理中（purchasing）。読み取りのみ。"""
         ...
 
     async def update_settings(

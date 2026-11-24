@@ -54,12 +54,12 @@ class MonitorDeps(NamedTuple):
 
 
 async def check_tick(deps: MonitorDeps) -> None:
-    """1分ごとの監視。1セッション・短い制限時間で購入する。画面には出さない。"""
+    """1分ごとの監視。1セッション・短い制限時間でする。画面には出さない。"""
     await _run(deps, nightly=False)
 
 
 async def nightly_check(deps: MonitorDeps) -> None:
-    """毎晩21時（JST）の確認。混雑に備え、リトライと複数セッションの競争で購入する。"""
+    """毎晩21時（JST）の確認。混雑に備え、リトライと複数セッションの競争でする。"""
     await _run(deps, nightly=True)
 
 
@@ -72,7 +72,7 @@ async def _run(deps: MonitorDeps, *, nightly: bool) -> None:
         if favorite.state == "purchasing":
             await _expire_if_stale(deps, favorite, now)
     if not await deps.settings.auto_purchase_enabled():
-        return  # OFF の間は、商品ページの確認も購入も検知もしない（検知のみでは何も残らないため）
+        return  # OFF の間は、商品ページの確認もも検知もしない（検知のみでは何も残らないため）
     watching = [f for f in active if f.state == "watching"]
     if watching:
         client = deps.client_factory()
@@ -116,7 +116,7 @@ async def _notify(
 
 
 async def _expire_if_stale(deps: MonitorDeps, favorite: Favorite, now: datetime) -> None:
-    """購入処理中のまま止まったもの。再購入はせず、購入履歴の確認を促す。"""
+    """処理中のまま止まったもの。再はせず、履歴の確認を促す。"""
     if now - favorite.state_changed_at <= timedelta(seconds=deps.stale_purchasing_seconds):
         return
     if await _move(deps, favorite, "purchasing", "unknown", favorite.state_version):
@@ -124,8 +124,8 @@ async def _expire_if_stale(deps: MonitorDeps, favorite: Favorite, now: datetime)
             deps,
             favorite,
             "unknown",
-            f"購入処理が途中で止まりました。購入履歴を確認してください"
-            f"（自動では再購入しません）: {favorite.product_name}",
+            f"処理が途中で止まりました。履歴を確認してください"
+            f"（自動では再しません）: {favorite.product_name}",
         )
 
 
@@ -161,7 +161,7 @@ async def _check_favorite(
             deps,
             favorite,
             "submit_disabled",
-            f"購入可能になりましたが、注文確定が無効のため購入せず、監視を停止しました"
+            f"可能になりましたが、注文確定が無効のためせず、監視を停止しました"
             f": {favorite.product_name}",
         )
         return
@@ -171,11 +171,11 @@ async def _check_favorite(
             deps,
             favorite,
             "skipped_price_cap",
-            f"価格 {summary.price_yen:,}円が上限 {cap:,}円を超えているため購入せず、"
+            f"価格 {summary.price_yen:,}円が上限 {cap:,}円を超えているためせず、"
             f"監視を停止しました: {favorite.product_name}",
         )
         return
-    # 条件付き遷移に成功した実行だけが購入する（毎分の監視と21時が重なっても1回）
+    # 条件付き遷移に成功した実行だけがする（毎分の監視と21時が重なっても1回）
     if not await _move(deps, favorite, "watching", "purchasing", favorite.state_version):
         return
     await _purchase(deps, favorite, favorite.state_version + 1, nightly)
@@ -247,14 +247,14 @@ async def _purchase(deps: MonitorDeps, favorite: Favorite, version: int, nightly
         )
         return
     except Exception:
-        # 想定外の失敗は、注文が送られた可能性を否定できないため、再購入せず unknown にする
+        # 想定外の失敗は、注文が送られた可能性を否定できないため、再せず unknown にする
         await _move(deps, favorite, "purchasing", "unknown", version)
         await _notify(
             deps,
             favorite,
             "unknown",
-            f"購入処理で想定外のエラーが起きました。購入履歴を確認してください"
-            f"（自動では再購入しません）: {favorite.product_name}",
+            f"処理で想定外のエラーが起きました。履歴を確認してください"
+            f"（自動では再しません）: {favorite.product_name}",
         )
         return
     await _record(deps, favorite, version, result.order)
@@ -288,12 +288,12 @@ async def _record(
             deps,
             favorite,
             "unknown",
-            f"注文の成否が不明です。購入履歴を確認してください（自動では再購入しません）: {name}",
+            f"注文の成否が不明です。履歴を確認してください（自動では再しません）: {name}",
         )
 
 
 async def _check_keyword_favorites(deps: MonitorDeps, nightly: bool) -> None:
-    """キーワードお気に入りの新着を検知して通知する（購入・送信はしない）。"""
+    """キーワードお気に入りの新着を検知して通知する（・送信はしない）。"""
     delay = fixed_delay(deps.nightly_retry_interval_seconds) if nightly else backoff_delay
     deadline = deps.preview_config.deadline_seconds if nightly else deps.tick_deadline_seconds
     for favorite in await deps.keyword_favorites.list_enabled():
@@ -319,7 +319,7 @@ async def _check_keyword_favorites(deps: MonitorDeps, nightly: bool) -> None:
             await client.aclose()
         for product in results:
             if not product.in_stock:
-                continue  # 購入可能でない新着は seen に入れず持ち越す
+                continue  # 可能でない新着は seen に入れず持ち越す
             if not await deps.keyword_favorites.claim_product(favorite.id, product.product_id):
                 continue  # すでに通知済み
             cap = favorite.price_cap_yen

@@ -57,7 +57,7 @@ def _provider(
 
 
 async def test_fetches_once_then_serves_from_cache_within_ttl() -> None:
-    client = FakeClient({"https://www.example.com/product-list/22": "<html>ok</html>"})
+    client = FakeClient({"https://www.dollyteria.com/product-list/22": "<html>ok</html>"})
     clock = FakeClock()
     provider = _provider(client, clock)
 
@@ -71,7 +71,7 @@ async def test_fetches_once_then_serves_from_cache_within_ttl() -> None:
 
 
 async def test_refetches_after_ttl_expires() -> None:
-    client = FakeClient({"https://www.example.com/product-list/22": "<html>ok</html>"})
+    client = FakeClient({"https://www.dollyteria.com/product-list/22": "<html>ok</html>"})
     clock = FakeClock()
     provider = _provider(client, clock)
 
@@ -93,7 +93,7 @@ async def test_falls_back_to_fixed_genres_when_fetch_fails() -> None:
 
 
 async def test_falls_back_when_the_page_has_no_categories() -> None:
-    client = FakeClient({"https://www.example.com/product-list/22": "<html></html>"})
+    client = FakeClient({"https://www.dollyteria.com/product-list/22": "<html></html>"})
     provider = _provider(client, FakeClock(), parse=lambda html: [])
 
     result = await provider.list_categories()

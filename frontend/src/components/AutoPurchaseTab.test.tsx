@@ -10,6 +10,7 @@ const NOW = new Date("2026-11-22T11:00:00Z");
 function setup(props: Partial<Parameters<typeof AutoPurchaseTab>[0]> = {}) {
   const onChanged = vi.fn();
   const onOpenConfirmation = vi.fn();
+  const onAutoOpenChange = vi.fn();
   render(
     <AutoPurchaseTab
       status={STATUS}
@@ -17,15 +18,32 @@ function setup(props: Partial<Parameters<typeof AutoPurchaseTab>[0]> = {}) {
       now={NOW}
       onChanged={onChanged}
       onOpenConfirmation={onOpenConfirmation}
+      autoOpen={false}
+      onAutoOpenChange={onAutoOpenChange}
       {...props}
     />,
   );
-  return { onChanged, onOpenConfirmation, tab: screen.getByRole("region", { name: "自動購入" }) };
+  return {
+    onChanged,
+    onOpenConfirmation,
+    onAutoOpenChange,
+    tab: screen.getByRole("region", { name: "自動" }),
+  };
 }
 
 afterEach(() => vi.unstubAllGlobals());
 
 describe("AutoPurchaseTab", () => {
+  it("has a switch to open the confirmation automatically on new arrivals", async () => {
+    const { onAutoOpenChange } = setup();
+
+    const toggle = screen.getByRole("switch", { name: "新着通知で自動で確認画面を開く" });
+    expect(toggle).not.toBeChecked();
+    await user.click(toggle);
+
+    expect(onAutoOpenChange).toHaveBeenCalledWith(true);
+  });
+
   it("shows the time until the nightly check, the worker and the order permission", () => {
     const { tab } = setup();
 
@@ -52,7 +70,7 @@ describe("AutoPurchaseTab", () => {
     const { calls } = mockApi({ "PUT /api/auto-purchase/enabled": () => json(200, STATUS) });
     const { tab, onChanged } = setup();
 
-    await user.click(within(tab).getByRole("switch", { name: "自動購入" }));
+    await user.click(within(tab).getByRole("switch", { name: "自動" }));
 
     await waitFor(() => expect(onChanged).toHaveBeenCalled());
     expect(calls[0].body).toEqual({ enabled: false });
@@ -86,7 +104,7 @@ describe("AutoPurchaseTab", () => {
   it("shows a loading state before the status arrives", () => {
     setup({ status: null });
 
-    expect(screen.getByRole("region", { name: "自動購入" })).toHaveTextContent("読み込み中");
+    expect(screen.getByRole("region", { name: "自動" })).toHaveTextContent("読み込み中");
   });
 });
 

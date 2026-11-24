@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from datetime import datetime
@@ -15,6 +16,7 @@ from spider.application.favorites import FavoriteDeps
 from spider.application.keyword_favorites import KeywordFavoriteDeps
 from spider.application.login import check_login
 from spider.application.ports import (
+    ConfirmPageAssistant,
     DuplicateAccount,
     DuplicateFavorite,
     EntityNotFound,
@@ -32,12 +34,15 @@ from spider.application.ports import (
     UpstreamError,
 )
 from spider.application.preview import (
+    AUTO_HANDOFF_DEADLINE_SECONDS,
+    AUTO_HANDOFF_MAX_DELAY_SECONDS,
+    CONFIRM_URL,
     CheckoutParsers,
     PreviewConfig,
     store_pickup_preview,
 )
 from spider.application.products import get_product, search_products
-from spider.application.retry import PreviewRuntime
+from spider.application.retry import PreviewRuntime, backoff_delay, jitter_delay
 from spider.application.use_cases import (
     ProductNotFound,
     get_latest_product_name,
@@ -50,7 +55,7 @@ from spider.domain.order import Order
 from spider.domain.payment import DEFAULT_PAYMENT_METHOD_ID, PAYMENT_METHODS, PaymentMethod
 from spider.domain.product import PreviewStep, ProductSummary, StorePickupResult
 
-LIST_URL = "https://www.example.com/product-list/22?view=new"
+LIST_URL = "https://www.dollyteria.com/product-list/22?view=new"
 
 
 class Dependencies(NamedTuple):
@@ -69,6 +74,7 @@ class Dependencies(NamedTuple):
     favorite_deps: FavoriteDeps
     keyword_deps: KeywordFavoriteDeps
     on_startup: Callable[[], Awaitable[None]]
+    consent_assistant: ConfirmPageAssistant | None = None
 
 
 class LatestProduct(BaseModel):
@@ -172,7 +178,29 @@ def _json_reason(error: Exception) -> str:
     return f'{{"reason":"{reason}"}}'
 
 
+logger = logging.getLogger(__name__)
+
+
+async def _assist_quietly(assistant: ConfirmPageAssistant, confirm_url: str) -> None:
+    try:
+        await assistant.assist(confirm_url)
+    except Exception:  # noqa: BLE001 - 補助機能なので、失敗はログだけにする
+        logger.exception("同意チェックの自動入力に失敗した")
+
+
 def create_app(deps: Dependencies) -> FastAPI:
+    # 引き継ぎ時の同意チェック（バックグラウンド）。参照を持って途中で GC されないようにする
+    assisting: set[asyncio.Task[None]] = set()
+
+    def start_consent_assist() -> asyncio.Task[None] | None:
+        # 拡張はタブをすぐ開くので、引き継ぎを始めた時点で接続し、既存のタブを記録させておく
+        if deps.consent_assistant is None:
+            return None
+        task = asyncio.create_task(_assist_quietly(deps.consent_assistant, CONFIRM_URL))
+        assisting.add(task)
+        task.add_done_callback(assisting.discard)
+        return task
+
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await deps.on_startup()
@@ -285,7 +313,7 @@ def create_app(deps: Dependencies) -> FastAPI:
 
     @router.get("/store-pickup-preview/stream")
     async def preview_stream(
-        account_id: str, product_id: int, payment_method: str
+        account_id: str, product_id: int, payment_method: str, auto: bool = False
     ) -> StreamingResponse:
         # 引き継ぎ（確認画面まで）の進捗を SSE で逐次流す。
         # 資格情報の解決はここで行う（失敗は通常のHTTPエラーになる）。
@@ -300,11 +328,21 @@ def create_app(deps: Dependencies) -> FastAPI:
             queue.put_nowait(("step", step.model_dump_json()))
 
         async def run() -> None:
+            assist = start_consent_assist()
+            handed_off = False
             try:
                 result = await store_pickup_preview(
                     client_factory=deps.client_factory,
                     parsers=deps.checkout_parsers,
-                    config=deps.preview_config._replace(parallelism=1),
+                    # auto: 新着通知から自動で開いた引き継ぎ（長く粘る）
+                    config=deps.preview_config._replace(
+                        parallelism=1,
+                        deadline_seconds=(
+                            AUTO_HANDOFF_DEADLINE_SECONDS
+                            if auto
+                            else deps.preview_config.deadline_seconds
+                        ),
+                    ),
                     runtime=deps.runtime,
                     email=email,
                     password=password,
@@ -312,16 +350,22 @@ def create_app(deps: Dependencies) -> FastAPI:
                     payment_method_id=payment_method,
                     submit_order=False,
                     handoff=True,
+                    retry_delay=(
+                        jitter_delay(AUTO_HANDOFF_MAX_DELAY_SECONDS) if auto else backoff_delay
+                    ),
                     on_step=on_step,
                 )
                 handoff = result.handoff
                 assert handoff is not None  # handoff=True なので必ず入る
                 queue.put_nowait(("done", handoff.model_dump_json()))
+                handed_off = True
             except tuple(_STREAM_REASON) as error:
                 queue.put_nowait(("error", _json_reason(error)))
             except Exception:  # noqa: BLE001 - 想定外も必ずストリームを閉じる
                 queue.put_nowait(("error", '{"reason":"error"}'))
             finally:
+                if assist is not None and not handed_off:
+                    assist.cancel()  # 引き継ぎが失敗・中断したら、タブを待つのもやめる
                 queue.put_nowait(("__end__", ""))
 
         task = asyncio.create_task(run())

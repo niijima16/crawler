@@ -76,7 +76,7 @@ async def _run(
             allow_order_submit=allow_order_submit,
         ),
         runtime=PreviewRuntime(sleep=clock.sleep, rng=lambda: 1.0, now=clock),
-        email="a@example.test",
+        email="a@dollyteria.test",
         password="secret-pw",
         product_id=PID,
         payment_method_id=payment_method_id,
@@ -323,7 +323,7 @@ async def test_order_payload_has_form_fields_but_no_recaptcha_token() -> None:
     await _run(site, submit_order=True)
 
     payload = site.requests("POST", CONFIRM_URL)[0]
-    assert payload == {"coupon_use": "f", "policy_agree": "1", "go-next": "購入する"}
+    assert payload == {"coupon_use": "f", "policy_agree": "1", "go-next": "する"}
 
 
 async def test_history_is_read_before_and_after_submitting() -> None:
@@ -425,7 +425,7 @@ async def _run_handoff(site: FakeSite, **kwargs: object) -> object:
             allow_order_submit=bool(kwargs.get("allow_order_submit", False)),
         ),
         runtime=PreviewRuntime(sleep=clock.sleep, rng=lambda: 1.0, now=clock),
-        email="a@example.test",
+        email="a@dollyteria.test",
         password="secret-pw",
         product_id=PID,
         payment_method_id=str(kwargs.get("payment_method_id", "8")),
@@ -442,11 +442,11 @@ async def test_handoff_reaches_the_confirmation_and_returns_the_session() -> Non
     assert result.handoff == Handoff(  # type: ignore[attr-defined]
         cookie_name="PHPSESSID",
         cookie_value="sess-xyz",
-        confirm_url="https://www.example.com/cart/confirm",
+        confirm_url="https://www.dollyteria.com/cart/confirm",
     )
     assert result.order is None  # type: ignore[attr-defined]
     assert result.preview.item_name == "SD16/OF:靴 U-26-07-22-192-TN-ZU"  # type: ignore[attr-defined]
-    assert site.requests("POST", CONFIRM_URL) == []  # 購入は送らない
+    assert site.requests("POST", CONFIRM_URL) == []  # は送らない
     assert all(c.closed for c in site.clients)
 
 

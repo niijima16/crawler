@@ -99,7 +99,7 @@ class Env:
 
     async def account(self, account_id: str = "a1", password: str = "secret-pw") -> None:
         await self.repos.accounts.add(
-            Account(id=account_id, label="テスト用", email=f"{account_id}@example.test"),
+            Account(id=account_id, label="テスト用", email=f"{account_id}@dollyteria.test"),
             self.box.encrypt(password),
         )
 
@@ -205,7 +205,7 @@ async def test_everything_is_skipped_while_the_master_switch_is_off() -> None:
     assert await env.kinds() == []
 
 
-# --- 購入 ---------------------------------------------------------------------
+# ---  ---------------------------------------------------------------------
 
 
 async def test_a_purchasable_product_is_bought_and_the_result_is_notified() -> None:
@@ -426,7 +426,7 @@ async def test_a_stale_purchasing_favorite_is_recovered_even_while_the_master_sw
 
     assert await env.state() == "unknown"
     assert await env.kinds() == ["unknown"]
-    assert env.site.clients == []  # 商品ページの確認も購入もしない
+    assert env.site.clients == []  # 商品ページの確認ももしない
 
 
 async def test_nightly_retries_at_a_fixed_interval_that_does_not_grow() -> None:

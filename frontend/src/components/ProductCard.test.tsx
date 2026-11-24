@@ -54,6 +54,6 @@ describe("ProductCard favorites", () => {
 
     const star = screen.getByRole("button", { name: "お気に入りに登録" });
     expect(star).toBeDisabled();
-    expect(star).toHaveAttribute("title", expect.stringContaining("自動購入"));
+    expect(star).toHaveAttribute("title", expect.stringContaining("自動"));
   });
 });

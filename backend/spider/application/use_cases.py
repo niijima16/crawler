@@ -3,7 +3,7 @@ from collections.abc import Callable
 from spider.application.ports import SiteClient
 from spider.domain.order import Order
 
-SITE = "https://www.example.com"
+SITE = "https://www.dollyteria.com"
 SALES_HISTORY_URL = f"{SITE}/sales-history"
 
 

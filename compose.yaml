@@ -9,6 +9,9 @@ x-backend-env: &backend-env
   CATEGORY_CACHE_TTL_SECONDS: ${CATEGORY_CACHE_TTL_SECONDS:-3600}
   # 注文確定は既定で無効。有効にするときだけ true にする（.env で上書き）
   ALLOW_ORDER_SUBMIT: ${ALLOW_ORDER_SUBMIT:-false}
+  # 引き継ぎ時に、ホストの Chrome（--remote-debugging-port=9222）へ CDP 接続して同意チェックを入れる。
+  # 空なら無効。使うときは .env に AUTO_CONSENT_CDP_URL=http://host.docker.internal:9222
+  AUTO_CONSENT_CDP_URL: ${AUTO_CONSENT_CDP_URL:-}
   # 資格情報の暗号化鍵。空なら、ローカル用に自動生成して CREDENTIALS_KEY_FILE に保存する
   # （backend と worker で共有するボリューム。DB のボリュームと同じ寿命）。指定があれば、そちらを優先する
   CREDENTIALS_KEY: ${CREDENTIALS_KEY:-}

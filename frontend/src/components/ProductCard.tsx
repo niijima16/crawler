@@ -33,7 +33,7 @@ export function ProductCard({
           title={
             canFavorite
               ? undefined
-              : "この支払方法では自動購入できません（店頭支払・代金引換・銀行振込・郵便振替を選んでください）"
+              : "この支払方法では自動できません（店頭支払・代金引換・銀行振込・郵便振替を選んでください）"
           }
           disabled={isFavorite || !canFavorite}
           onClick={() => setConsenting(true)}
@@ -51,7 +51,7 @@ export function ProductCard({
         </div>
         {consenting && !isFavorite && (
           <div className="consent">
-            <p>お気に入りに登録すると、購入可能になった時点で自動で注文確定まで進みます。</p>
+            <p>お気に入りに登録すると、可能になった時点で自動で注文確定まで進みます。</p>
             <div className="row">
               <button
                 type="button"

@@ -47,8 +47,8 @@ API はすべて `/api` 配下（`GET /api/healthz` がヘルスチェック）�
 
 - `docker compose up --build` で `dynamodb`（DynamoDB Local。データは名前付きボリューム）、`backend`（FastAPI）、`worker`（1分ごとの監視と毎晩21時〔JST〕の確認。同じイメージで `python -m spider.worker`）、`frontend`（nginx。`/api/` を backend へ中継）が起動する。画面は `http://127.0.0.1:8080`（ローカルのみで公開）。
 - `CREDENTIALS_KEY`（サイトのパスワードを暗号化する鍵）は、ローカルでは空でよい（空なら `CREDENTIALS_KEY_FILE` に自動生成して、ボリュームに保存する。ローカル専用）。AWS などでは必ず環境変数（や KMS）で指定する。`.env` はコミットしない。DB を初期化するときは `docker compose down -v`（指定した鍵を変えたら必須。古い鍵で暗号化したアカウントは復号できなくなる）。
-- 設定は環境変数のみ: `PREVIEW_PARALLELISM`（既定3・上限5）、`PREVIEW_DEADLINE_SECONDS`（既定60・上限120）、`TICK_DEADLINE_SECONDS`（既定20）、`ALLOW_ORDER_SUBMIT`（既定 `false`。注文確定と自動購入を許可するときだけ `true`）、`DYNAMODB_ENDPOINT` / `AWS_REGION` / `TABLE_PREFIX`。
-- ストレージ（アカウント・お気に入り・通知・設定）は、ポート（`application/ports.py`）の背後にある DynamoDB 実装（`infrastructure/dynamodb_repos.py`）。書き込みは、ユーザー操作と状態遷移のときだけ（監視の1回ごとの読み取りでは書かない）。購入は `watching → purchasing` の条件付き書き込みに成功した実行だけが行う（二重購入の防止）。AWS では、`check_tick` / `nightly_check` を EventBridge Scheduler → Lambda から呼ぶ想定（ワーカーはその代わり）。
+- 設定は環境変数のみ: `PREVIEW_PARALLELISM`（既定3・上限5）、`PREVIEW_DEADLINE_SECONDS`（既定60・上限120）、`TICK_DEADLINE_SECONDS`（既定20）、`ALLOW_ORDER_SUBMIT`（既定 `false`。注文確定と自動を許可するときだけ `true`）、`DYNAMODB_ENDPOINT` / `AWS_REGION` / `TABLE_PREFIX`。
+- ストレージ（アカウント・お気に入り・通知・設定）は、ポート（`application/ports.py`）の背後にある DynamoDB 実装（`infrastructure/dynamodb_repos.py`）。書き込みは、ユーザー操作と状態遷移のときだけ（監視の1回ごとの読み取りでは書かない）。は `watching → purchasing` の条件付き書き込みに成功した実行だけが行う（二重の防止）。AWS では、`check_tick` / `nightly_check` を EventBridge Scheduler → Lambda から呼ぶ想定（ワーカーはその代わり）。
 - ローカルに Node は無い前提。フロントのツールは Docker で実行する（下記）。
 
 ## テスト
@@ -85,5 +85,5 @@ npm test                    # package.json にある場合
 
 - 基盤（ドメインモデル、DB スキーマ、共通ユーティリティ、依存関係、Dockerfile / compose、CI）を変更するときは、設計書に理由と影響範囲を書く。
 - 秘密情報（API キー、パスワード、`.env`）をコミットしない。
-- 実サイトでの注文確定（「購入する」）の検証は、ユーザーの個別の明示的な許可がない限り行わない。
+- 実サイトでの注文確定（「する」）の検証は、ユーザーの個別の明示的な許可がない限り行わない。
 - パスワード・氏名・住所・メール・Cookie をフィクスチャ・ログ・ドキュメントに残さない。

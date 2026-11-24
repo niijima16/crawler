@@ -53,7 +53,7 @@ export function KeywordFavoriteForm({ accountId, genres, methods, onAdded }: Pro
         <h2>キーワードお気に入りを登録</h2>
       </div>
       <p className="muted" style={{ marginTop: 0 }}>
-        キーワード（部分一致）とジャンルで見張り、新しく出てきた購入可能な商品を検知して通知します。確認画面まで進めてブラウザに引き継ぎ、最後の「購入する」はブラウザで自分が押します。
+        キーワード（部分一致）とジャンルで見張り、新しく出てきた可能な商品を検知して通知します。確認画面まで進めてブラウザに引き継ぎ、最後の「する」はブラウザで自分が押します。
       </p>
       <form className="row" onSubmit={submit}>
         <label className="field">
@@ -103,7 +103,7 @@ export function KeywordFavoriteForm({ accountId, genres, methods, onAdded }: Pro
         </button>
       </form>
       <p className="hint">
-        クレジットカードは選べません（確認画面まで進めないため）。登録後の最初の監視で、今ある購入可能な一致商品も通知します（その後は新しく出たものが対象）。
+        クレジットカードは選べません（確認画面まで進めないため）。登録後の最初の監視で、今ある可能な一致商品も通知します（その後は新しく出たものが対象）。
       </p>
       {error && <div className="banner err">{error}</div>}
     </section>

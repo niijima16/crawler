@@ -48,8 +48,8 @@ export const PREVIEW_RESULT: StorePickupResult = {
   handoff: null,
 };
 
-export const ACCOUNT: Account = { id: "a1", label: "テスト用 A", email: "tester@example" };
-export const ACCOUNT_B: Account = { id: "a2", label: "テスト用 B", email: "sato@example" };
+export const ACCOUNT: Account = { id: "a1", label: "テスト用 A", email: "tester@dollyteria" };
+export const ACCOUNT_B: Account = { id: "a2", label: "テスト用 B", email: "sato@dollyteria" };
 
 export function favorite(overrides: Partial<Favorite> = {}): Favorite {
   return {

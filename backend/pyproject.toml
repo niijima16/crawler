@@ -42,3 +42,12 @@ exclude = ["global_utils"]
 [[tool.mypy.overrides]]
 module = ["boto3.*", "botocore.*"]
 ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# smooth-cursor-playwright は型情報（py.typed）を持たない
+module = ["human_cursor.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["global_utils.*"]
+follow_imports = "skip"

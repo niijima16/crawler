@@ -40,10 +40,10 @@ from test.fakes import (
     html,
 )
 
-BODY = {"email": "a@example.test", "password": "secret-pw"}
-SEARCH_ALL = "https://www.example.com/product-list?keyword=%E8%B1%86%E6%9C%AC"
+BODY = {"email": "a@dollyteria.test", "password": "secret-pw"}
+SEARCH_ALL = "https://www.dollyteria.com/product-list?keyword=%E8%B1%86%E6%9C%AC"
 SEARCH_STOCK = SEARCH_ALL + "&available=1"
-CAT_SEARCH = "https://www.example.com/product-list/22?keyword=%E8%B1%86%E6%9C%AC"
+CAT_SEARCH = "https://www.dollyteria.com/product-list/22?keyword=%E8%B1%86%E6%9C%AC"
 
 
 class FakeClient:
@@ -87,7 +87,7 @@ class Factory:
         pages = {
             LIST_URL: html("product_list_new.html"),
             SALES_HISTORY_URL: html("sales_history.html"),
-            f"https://www.example.com/product/{810297}": html("product_page_purchasable.html"),
+            f"https://www.dollyteria.com/product/{810297}": html("product_page_purchasable.html"),
             SEARCH_ALL: html("product_list_keyword.html"),
             SEARCH_STOCK: html("product_list_keyword_available.html"),
             CAT_SEARCH: html("product_list_keyword.html"),
@@ -113,6 +113,7 @@ def _deps(
     parallelism: int = 1,
     repos: MemoryRepos | None = None,
     categories: list[Genre] | None = None,
+    consent_assistant: Any = None,
 ) -> Dependencies:
     clock = FakeTime()
     shared_repos = repos or MemoryRepos()
@@ -142,6 +143,7 @@ def _deps(
         favorite_deps=_favorite_deps(factory, clock, shared_repos),
         keyword_deps=_keyword_deps(shared_repos, categories),
         on_startup=_noop,
+        consent_assistant=consent_assistant,
     )
 
 
@@ -235,7 +237,7 @@ def test_login_failure_is_401_without_credentials_in_body() -> None:
 
     assert response.status_code == 401
     assert "secret-pw" not in response.text
-    assert "a@example.test" not in response.text
+    assert "a@dollyteria.test" not in response.text
 
 
 def test_upstream_error_is_502() -> None:
@@ -524,7 +526,7 @@ def test_order_submission_when_enabled_and_requested() -> None:
     assert response.json()["order"] == {"status": "submitted", "order_id": "96301", "reason": None}
 
 
-# --- アカウント・お気に入り・通知・自動購入 -------------------------------------------
+# --- アカウント・お気に入り・通知・自動 -------------------------------------------
 
 ACCOUNT = {"label": "テスト用 A", **BODY}
 PRODUCT = 810297
@@ -543,7 +545,7 @@ def test_register_and_list_accounts_never_expose_the_password() -> None:
         listed = client.get("/api/accounts")
 
     assert created.status_code == 200
-    assert created.json() == {"id": "id1", "label": "テスト用 A", "email": "a@example.test"}
+    assert created.json() == {"id": "id1", "label": "テスト用 A", "email": "a@dollyteria.test"}
     assert listed.json() == [created.json()]
     assert "secret-pw" not in created.text + listed.text
 
@@ -682,7 +684,7 @@ def test_preview_with_a_saved_account_uses_its_stored_credentials() -> None:
     assert response.status_code == 200
     assert response.json()["preview"]["item_name"] == "SD16/OF:靴 U-26-07-22-192-TN-ZU"
     logins = [d for _, m, _, d in site.log if m == "LOGIN"]
-    assert logins[-1] == {"email": "a@example.test"}
+    assert logins[-1] == {"email": "a@dollyteria.test"}
     assert "secret-pw" not in response.text
 
 
@@ -699,7 +701,7 @@ def test_preview_needs_either_an_account_or_credentials() -> None:
     with _app(FakeSite().factory) as client:
         response = client.post("/api/store-pickup-preview", json={"product_id": PID})
         partial = client.post(
-            "/api/store-pickup-preview", json={"product_id": PID, "email": "a@example.test"}
+            "/api/store-pickup-preview", json={"product_id": PID, "email": "a@dollyteria.test"}
         )
 
     assert response.status_code == 422 and partial.status_code == 422
@@ -713,7 +715,7 @@ def test_preview_with_credentials_that_cannot_be_decrypted_is_401() -> None:
         account_id = _with_account(client)
         asyncio.run(
             repos.accounts.add(
-                Account(id=account_id, label="x", email="a@example.test"), "garbage"
+                Account(id=account_id, label="x", email="a@dollyteria.test"), "garbage"
             )
         )
         response = client.post(
@@ -737,7 +739,7 @@ def test_handoff_returns_the_session_without_logging_the_password(
     assert body["handoff"] == {
         "cookie_name": "PHPSESSID",
         "cookie_value": "sess-xyz",
-        "confirm_url": "https://www.example.com/cart/confirm",
+        "confirm_url": "https://www.dollyteria.com/cart/confirm",
     }
     assert body["order"] is None
     assert "secret-pw" not in response.text
@@ -894,6 +896,118 @@ def test_store_pickup_preview_stream_emits_steps_then_done_with_the_session() ->
     # パスワードは流れない。cookie は done より前（途中の step イベント）には出ない
     assert "secret-pw" not in text
     assert text.index("sess-xyz") > text.index("event: done")
+
+
+def _busy_confirm(times: int) -> Any:
+    """確認画面の生成（配送の送信）が times 回 503 になるサイトのフック"""
+    count = {"n": 0}
+
+    async def hook(index: int, method: str, url: str) -> None:
+        if method == "POST" and url.endswith("/cart/shipping") and count["n"] < times:
+            count["n"] += 1
+            raise UpstreamError
+
+    return hook
+
+
+def _stream(site: FakeSite, **extra: str) -> str:
+    with _app(site.factory) as client:
+        account_id = _with_account(client)
+        site.log.clear()  # アカウント登録時のログイン確認を数えない
+        response = client.get(
+            "/api/store-pickup-preview/stream",
+            params={"account_id": account_id, "product_id": PID, "payment_method": "8", **extra},
+        )
+    text: str = response.text
+    return text
+
+
+def test_auto_stream_keeps_retrying_the_failed_step_past_the_normal_deadline() -> None:
+    site = FakeSite(
+        hook=_busy_confirm(100)
+    )  # 0.5秒×100 = 50秒（テストの通常の制限時間 30秒を超える）
+
+    text = _stream(site, auto="true")
+
+    assert "event: done" in text
+    assert len(site.requests("LOGIN", "login")) == 1  # ログインからやり直していない
+
+
+def test_manual_stream_still_times_out_on_the_normal_deadline() -> None:
+    site = FakeSite(hook=_busy_confirm(100))
+
+    text = _stream(site)
+
+    assert "event: error" in text
+    assert '"reason":"timeout"' in text
+
+
+class _RecordingAssistant:
+    def __init__(self, error: Exception | None = None) -> None:
+        self.urls: list[str] = []
+        self._error = error
+
+    async def assist(self, confirm_url: str) -> None:
+        self.urls.append(confirm_url)
+        if self._error is not None:
+            raise self._error
+
+
+def _stream_with(assistant: _RecordingAssistant) -> str:
+    with _app(FakeSite().factory, consent_assistant=assistant) as client:
+        account_id = _with_account(client)
+        response = client.get(
+            "/api/store-pickup-preview/stream",
+            params={"account_id": account_id, "product_id": PID, "payment_method": "8"},
+        )
+    text: str = response.text
+    return text
+
+
+def test_store_pickup_preview_stream_starts_consent_assistant_with_confirm_url() -> None:
+    assistant = _RecordingAssistant()
+
+    text = _stream_with(assistant)
+
+    assert "event: done" in text
+    assert assistant.urls == ["https://www.dollyteria.com/cart/confirm"]
+
+
+def test_store_pickup_preview_stream_is_not_affected_by_assistant_failure() -> None:
+    assistant = _RecordingAssistant(error=RuntimeError("CDP に接続できない"))
+
+    text = _stream_with(assistant)
+
+    assert "event: done" in text
+    assert assistant.urls == ["https://www.dollyteria.com/cart/confirm"]
+
+
+class _WaitingAssistant:
+    """新しいタブを待ち続ける assistant。キャンセルされたら記録する。"""
+
+    def __init__(self) -> None:
+        self.cancelled = False
+
+    async def assist(self, confirm_url: str) -> None:
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            self.cancelled = True
+            raise
+
+
+def test_store_pickup_preview_stream_cancels_assistant_when_handoff_fails() -> None:
+    assistant = _WaitingAssistant()
+    site = FakeSite(cart="product_page_soldout.html")
+    with _app(site.factory, consent_assistant=assistant) as client:
+        account_id = _with_account(client)
+        response = client.get(
+            "/api/store-pickup-preview/stream",
+            params={"account_id": account_id, "product_id": PID, "payment_method": "8"},
+        )
+
+    assert "event: error" in response.text
+    assert assistant.cancelled
 
 
 def test_store_pickup_preview_stream_reports_not_purchasable_as_an_error_event() -> None:

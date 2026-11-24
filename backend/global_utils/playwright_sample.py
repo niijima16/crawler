@@ -7,18 +7,18 @@
          --remote-debugging-port=9222 --user-data-dir="$HOME/.pickup-chrome"
   2. その Chrome に browser-extension/ を読み込む（README 参照）
 使い方:
-  このスクリプトを起動 → ツール画面で「確認画面を開く」。拡張が開いたタブを見つけて処理する。
+  このスクリプトを起動したままにする → ツール画面で「確認画面を開く」。
+  拡張が確認画面のタブを開くたびに、そのタブを1回だけ処理する。終了は Ctrl+C。
 """
 import re
 import time
 from playwright.sync_api import Browser, Playwright, sync_playwright, expect, Locator, Page
 from human_cursor import SyncHumanCursor
 
-DRY_RUN = True          # True なら購入ボタンの手前で止まる。本番で押すときだけ False にする
+DRY_RUN = True          # True ならボタンの手前で止まる。本番で押すときだけ False にする
 TIMEOUT = 10_000        # 要素を待つ時間（ミリ秒）
 CDP_URL = "http://localhost:9222"
-CONFIRM_URL = "https://www.example.com/cart/confirm"
-TAB_WAIT_SEC = 300      # 拡張が確認画面のタブを開くのを待つ時間
+CONFIRM_URL = "https://www.dollyteria.com/cart/confirm"
 READY_TIMEOUT = 90_000  # 503 の自動リロード（拡張側で最大約1分）を待つ時間（ミリ秒）
 
 
@@ -53,7 +53,6 @@ def check_agree(page: Page, cursor: SyncHumanCursor) -> None:
     agree.check(force=True)
     expect(agree).to_be_checked()
 
-
 def click_buy(page: Page, cursor: SyncHumanCursor) -> None:
     buy = page.get_by_role("button", name="購入する")
     expect(buy).to_be_enabled(timeout=TIMEOUT)
@@ -81,23 +80,19 @@ def click_buy(page: Page, cursor: SyncHumanCursor) -> None:
         raise RuntimeError("購入後の状態がわからない。二重注文の恐れがあるので手動で確認してください")
 
 
-def wait_confirm_page(browser: Browser) -> Page:
-    """拡張が開いた確認画面のタブが現れるまで待って返す"""
-    deadline = time.monotonic() + TAB_WAIT_SEC
-    while time.monotonic() < deadline:
+
+def wait_confirm_page(browser: Browser, handled: set[Page]) -> Page:
+    """拡張が開いた確認画面のタブのうち、まだ処理していないものが現れるまで待って返す"""
+    while True:
         for context in browser.contexts:
             for page in context.pages:
-                if page.url.startswith(CONFIRM_URL):
+                if page.url.startswith(CONFIRM_URL) and page not in handled:
                     return page
         time.sleep(0.5)
-    raise TimeoutError("確認画面のタブが開かれなかった")
 
 
-def run(playwright: Playwright) -> None:
-    # 自分で起動せず、拡張が入った起動済みの Chrome に接続する
-    browser = playwright.chromium.connect_over_cdp(CDP_URL)
-    print("[info] 拡張が確認画面を開くのを待っています…")
-    page = wait_confirm_page(browser)
+def process_page(page: Page) -> None:
+    """1つのタブを処理する。失敗しても例外は出さず、調査用のファイルを残して次のタブを待てるようにする"""
     context = page.context
     context.tracing.start(screenshots=True, snapshots=True)   # 失敗したときの調査用
     page.set_default_timeout(TIMEOUT)
@@ -109,16 +104,32 @@ def run(playwright: Playwright) -> None:
         check_agree(page, cursor)
         click_buy(page, cursor)
         print("[ok] 完了:", page.url)
-    except Exception:
-        page.screenshot(path="error.png", full_page=True)
+    except Exception as e:
         context.tracing.stop(path="trace.zip")
-        print("[error] error.png / trace.zip を保存した")
-        raise
+        try:
+            page.screenshot(path="error.png", full_page=True)
+        except Exception as shot_err:  # タブが閉じられたときなど
+            print(f"[warn] error.png を保存できなかった: {shot_err!r}")
+        print(f"[error] {e!r}")
+        print("[error] error.png / trace.zip を保存した。次のタブを待ちます")
     else:
         context.tracing.stop()
+
+
+def run(playwright: Playwright) -> None:
+    # 自分で起動せず、拡張が入った起動済みの Chrome に接続する
+    browser = playwright.chromium.connect_over_cdp(CDP_URL)
+    handled: set[Page] = set()
+    try:
+        while True:
+            print("[info] 拡張が確認画面を開くのを待っています…（終了は Ctrl+C）")
+            page = wait_confirm_page(browser, handled)
+            handled.add(page)
+            process_page(page)
     finally:
         browser.close()   # CDP 接続では切断だけ（ユーザーの Chrome とタブは閉じない）
 
 
-with sync_playwright() as playwright:
-    run(playwright)
+if __name__ == "__main__":
+    with sync_playwright() as playwright:
+        run(playwright)

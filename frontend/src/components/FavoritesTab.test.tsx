@@ -63,8 +63,8 @@ describe("FavoritesTab", () => {
 
   it.each([
     ["watching", "監視中"],
-    ["purchasing", "購入処理中"],
-    ["purchased", "購入済み"],
+    ["purchasing", "処理中"],
+    ["purchased", "済み"],
     ["rejected", "受理されず"],
     ["unknown", "成否不明"],
     ["stopped", "停止"],

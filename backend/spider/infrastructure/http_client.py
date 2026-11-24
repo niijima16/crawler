@@ -5,7 +5,7 @@ import httpx
 from spider.application.ports import LoginFailed, UpstreamError
 from spider.application.use_cases import ProductNotFound
 
-LOGIN_URL = "https://www.example.com/member-login"
+LOGIN_URL = "https://www.dollyteria.com/member-login"
 _LOGGED_IN_MARKER = "ログアウト"
 
 

@@ -5,7 +5,7 @@ type Props = { current: Tab; unread: number; onChange: (tab: Tab) => void };
 const TABS: { id: Tab; label: string }[] = [
   { id: "search", label: "商品を探す" },
   { id: "favorites", label: "お気に入り" },
-  { id: "auto", label: "自動購入" },
+  { id: "auto", label: "自動" },
 ];
 
 export function Tabs({ current, unread, onChange }: Props) {

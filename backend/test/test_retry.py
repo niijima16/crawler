@@ -1,7 +1,13 @@
 import pytest
 
 from spider.application.ports import LoginFailed, PreviewTimeout, UpstreamError
-from spider.application.retry import PreviewRuntime, backoff_delay, fixed_delay, retrying
+from spider.application.retry import (
+    PreviewRuntime,
+    backoff_delay,
+    fixed_delay,
+    jitter_delay,
+    retrying,
+)
 
 pytestmark = pytest.mark.anyio
 
@@ -27,6 +33,14 @@ def test_backoff_jitter_is_between_half_and_full() -> None:
     assert backoff_delay(2, lambda: 0.0) == 2.0
     assert backoff_delay(2, lambda: 0.5) == 3.0
     assert backoff_delay(2, lambda: 1.0) == 4.0
+
+
+def test_jitter_delay_is_up_to_max_and_does_not_grow() -> None:
+    delay = jitter_delay(0.5)
+
+    assert delay(0, lambda: 0.0) == 0.0
+    assert delay(0, lambda: 1.0) == 0.5
+    assert delay(10, lambda: 1.0) == 0.5  # 試行回数で延びない
 
 
 async def test_retries_upstream_errors_then_succeeds() -> None:

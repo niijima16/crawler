@@ -9,7 +9,7 @@ describe("Tabs", () => {
     expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual([
       "商品を探す",
       "お気に入り",
-      "自動購入",
+      "自動",
     ]);
     expect(screen.getByRole("tab", { name: "お気に入り" })).toHaveAttribute(
       "aria-selected",
@@ -24,14 +24,14 @@ describe("Tabs", () => {
   it("shows the unread count on the auto-purchase tab", () => {
     render(<Tabs current="search" unread={2} onChange={() => {}} />);
 
-    expect(screen.getByRole("tab", { name: /自動購入/ })).toHaveTextContent("2");
+    expect(screen.getByRole("tab", { name: /自動/ })).toHaveTextContent("2");
   });
 
   it("reports the chosen tab", async () => {
     const onChange = vi.fn();
     render(<Tabs current="search" unread={0} onChange={onChange} />);
 
-    await userEvent.click(screen.getByRole("tab", { name: "自動購入" }));
+    await userEvent.click(screen.getByRole("tab", { name: "自動" }));
 
     expect(onChange).toHaveBeenCalledWith("auto");
   });

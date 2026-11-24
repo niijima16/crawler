@@ -17,7 +17,7 @@ from human_cursor import SyncHumanCursor
 DRY_RUN = True          # True なら購入ボタンの手前で止まる。本番で押すときだけ False にする
 TIMEOUT = 10_000        # 要素を待つ時間（ミリ秒）
 CDP_URL = "http://localhost:9222"
-CONFIRM_URL = "https://www.dollyteria.com/cart/confirm"
+CONFIRM_URL = "https://www.example.com/cart/confirm"
 TAB_WAIT_SEC = 300      # 拡張が確認画面のタブを開くのを待つ時間
 READY_TIMEOUT = 90_000  # 503 の自動リロード（拡張側で最大約1分）を待つ時間（ミリ秒）
 

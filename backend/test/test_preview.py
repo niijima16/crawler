@@ -76,7 +76,7 @@ async def _run(
             allow_order_submit=allow_order_submit,
         ),
         runtime=PreviewRuntime(sleep=clock.sleep, rng=lambda: 1.0, now=clock),
-        email="a@dollyteria.test",
+        email="a@example.test",
         password="secret-pw",
         product_id=PID,
         payment_method_id=payment_method_id,
@@ -425,7 +425,7 @@ async def _run_handoff(site: FakeSite, **kwargs: object) -> object:
             allow_order_submit=bool(kwargs.get("allow_order_submit", False)),
         ),
         runtime=PreviewRuntime(sleep=clock.sleep, rng=lambda: 1.0, now=clock),
-        email="a@dollyteria.test",
+        email="a@example.test",
         password="secret-pw",
         product_id=PID,
         payment_method_id=str(kwargs.get("payment_method_id", "8")),
@@ -442,7 +442,7 @@ async def test_handoff_reaches_the_confirmation_and_returns_the_session() -> Non
     assert result.handoff == Handoff(  # type: ignore[attr-defined]
         cookie_name="PHPSESSID",
         cookie_value="sess-xyz",
-        confirm_url="https://www.dollyteria.com/cart/confirm",
+        confirm_url="https://www.example.com/cart/confirm",
     )
     assert result.order is None  # type: ignore[attr-defined]
     assert result.preview.item_name == "SD16/OF:靴 U-26-07-22-192-TN-ZU"  # type: ignore[attr-defined]

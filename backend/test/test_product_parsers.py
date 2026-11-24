@@ -94,7 +94,7 @@ def test_order_form_has_action_and_required_fields_only() -> None:
     form = extract_order_form(_html("cart_confirm.html"))
 
     assert form == OrderForm(
-        action="https://www.dollyteria.com/cart/confirm",
+        action="https://www.example.com/cart/confirm",
         fields={"coupon_use": "f", "policy_agree": "1", "go-next": "購入する"},
     )
 

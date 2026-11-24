@@ -5,7 +5,7 @@ from pathlib import Path
 from spider.application.use_cases import SALES_HISTORY_URL
 
 FIXTURES = Path(__file__).parent / "fixtures"
-SITE = "https://www.dollyteria.com"
+SITE = "https://www.example.com"
 PID = 769926
 PRODUCT_URL = f"{SITE}/product/{PID}"
 CUSTOMER_URL = f"{SITE}/cart/customer"

@@ -40,10 +40,10 @@ from test.fakes import (
     html,
 )
 
-BODY = {"email": "a@dollyteria.test", "password": "secret-pw"}
-SEARCH_ALL = "https://www.dollyteria.com/product-list?keyword=%E8%B1%86%E6%9C%AC"
+BODY = {"email": "a@example.test", "password": "secret-pw"}
+SEARCH_ALL = "https://www.example.com/product-list?keyword=%E8%B1%86%E6%9C%AC"
 SEARCH_STOCK = SEARCH_ALL + "&available=1"
-CAT_SEARCH = "https://www.dollyteria.com/product-list/22?keyword=%E8%B1%86%E6%9C%AC"
+CAT_SEARCH = "https://www.example.com/product-list/22?keyword=%E8%B1%86%E6%9C%AC"
 
 
 class FakeClient:
@@ -87,7 +87,7 @@ class Factory:
         pages = {
             LIST_URL: html("product_list_new.html"),
             SALES_HISTORY_URL: html("sales_history.html"),
-            f"https://www.dollyteria.com/product/{810297}": html("product_page_purchasable.html"),
+            f"https://www.example.com/product/{810297}": html("product_page_purchasable.html"),
             SEARCH_ALL: html("product_list_keyword.html"),
             SEARCH_STOCK: html("product_list_keyword_available.html"),
             CAT_SEARCH: html("product_list_keyword.html"),
@@ -235,7 +235,7 @@ def test_login_failure_is_401_without_credentials_in_body() -> None:
 
     assert response.status_code == 401
     assert "secret-pw" not in response.text
-    assert "a@dollyteria.test" not in response.text
+    assert "a@example.test" not in response.text
 
 
 def test_upstream_error_is_502() -> None:
@@ -543,7 +543,7 @@ def test_register_and_list_accounts_never_expose_the_password() -> None:
         listed = client.get("/api/accounts")
 
     assert created.status_code == 200
-    assert created.json() == {"id": "id1", "label": "テスト用 A", "email": "a@dollyteria.test"}
+    assert created.json() == {"id": "id1", "label": "テスト用 A", "email": "a@example.test"}
     assert listed.json() == [created.json()]
     assert "secret-pw" not in created.text + listed.text
 
@@ -682,7 +682,7 @@ def test_preview_with_a_saved_account_uses_its_stored_credentials() -> None:
     assert response.status_code == 200
     assert response.json()["preview"]["item_name"] == "SD16/OF:靴 U-26-07-22-192-TN-ZU"
     logins = [d for _, m, _, d in site.log if m == "LOGIN"]
-    assert logins[-1] == {"email": "a@dollyteria.test"}
+    assert logins[-1] == {"email": "a@example.test"}
     assert "secret-pw" not in response.text
 
 
@@ -699,7 +699,7 @@ def test_preview_needs_either_an_account_or_credentials() -> None:
     with _app(FakeSite().factory) as client:
         response = client.post("/api/store-pickup-preview", json={"product_id": PID})
         partial = client.post(
-            "/api/store-pickup-preview", json={"product_id": PID, "email": "a@dollyteria.test"}
+            "/api/store-pickup-preview", json={"product_id": PID, "email": "a@example.test"}
         )
 
     assert response.status_code == 422 and partial.status_code == 422
@@ -713,7 +713,7 @@ def test_preview_with_credentials_that_cannot_be_decrypted_is_401() -> None:
         account_id = _with_account(client)
         asyncio.run(
             repos.accounts.add(
-                Account(id=account_id, label="x", email="a@dollyteria.test"), "garbage"
+                Account(id=account_id, label="x", email="a@example.test"), "garbage"
             )
         )
         response = client.post(
@@ -737,7 +737,7 @@ def test_handoff_returns_the_session_without_logging_the_password(
     assert body["handoff"] == {
         "cookie_name": "PHPSESSID",
         "cookie_value": "sess-xyz",
-        "confirm_url": "https://www.dollyteria.com/cart/confirm",
+        "confirm_url": "https://www.example.com/cart/confirm",
     }
     assert body["order"] is None
     assert "secret-pw" not in response.text

@@ -50,7 +50,7 @@ from spider.domain.order import Order
 from spider.domain.payment import DEFAULT_PAYMENT_METHOD_ID, PAYMENT_METHODS, PaymentMethod
 from spider.domain.product import PreviewStep, ProductSummary, StorePickupResult
 
-LIST_URL = "https://www.dollyteria.com/product-list/22?view=new"
+LIST_URL = "https://www.example.com/product-list/22?view=new"
 
 
 class Dependencies(NamedTuple):

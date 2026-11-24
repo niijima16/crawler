@@ -41,9 +41,9 @@ describe("AccountCard", () => {
     const { card, onSelect } = setup();
 
     expect(card).toHaveTextContent("ログイン済み");
-    expect(card).toHaveTextContent("t***@dollyteria");
-    expect(card).toHaveTextContent("s***@dollyteria");
-    expect(card).not.toHaveTextContent("tester@dollyteria");
+    expect(card).toHaveTextContent("t***@example");
+    expect(card).toHaveTextContent("s***@example");
+    expect(card).not.toHaveTextContent("tester@example");
     expect(card).toHaveTextContent("使用中");
 
     await user.click(within(card).getByRole("button", { name: "切り替える" }));
@@ -57,14 +57,14 @@ describe("AccountCard", () => {
 
     await user.click(within(card).getByRole("button", { name: "アカウントを追加" }));
     await user.type(within(card).getByLabelText("ラベル"), "テスト用 B");
-    await user.type(within(card).getByLabelText("メールアドレス"), "sato@dollyteria");
+    await user.type(within(card).getByLabelText("メールアドレス"), "sato@example");
     await user.type(within(card).getByLabelText("パスワード"), "secret-pw");
     await user.click(within(card).getByRole("button", { name: "ログインを確認して追加" }));
 
     await waitFor(() => expect(onAdded).toHaveBeenCalledWith(ACCOUNT_B));
     expect(calls[0].body).toEqual({
       label: "テスト用 B",
-      email: "sato@dollyteria",
+      email: "sato@example",
       password: "secret-pw",
     });
     expect(screen.queryByLabelText("パスワード")).not.toBeInTheDocument();
@@ -78,7 +78,7 @@ describe("AccountCard", () => {
     mockApi({ "POST /api/accounts": () => json(status, body) });
     const { card, onAdded } = setup({ accounts: [], selectedId: null });
 
-    await user.type(within(card).getByLabelText("メールアドレス"), "a@dollyteria.test");
+    await user.type(within(card).getByLabelText("メールアドレス"), "a@example.test");
     await user.type(within(card).getByLabelText("パスワード"), "bad");
     await user.click(within(card).getByRole("button", { name: "ログインを確認して追加" }));
 

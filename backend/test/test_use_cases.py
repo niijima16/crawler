@@ -46,30 +46,30 @@ async def test_latest_product_name_does_not_login() -> None:
     client = FakeClient()
 
     name = await get_latest_product_name(
-        client, "https://dollyteria.test/list", lambda html: "NAME"
+        client, "https://example.test/list", lambda html: "NAME"
     )
 
     assert name == "NAME"
-    assert client.calls == [("get", "https://dollyteria.test/list")]
+    assert client.calls == [("get", "https://example.test/list")]
 
 
 async def test_purchase_history_logs_in_then_fetches_history() -> None:
     client = FakeClient()
     order = Order(order_id="1", purchased_on=date(2026, 1, 1), total_yen=100)
 
-    orders = await get_purchase_history(client, "a@dollyteria.test", "pw", lambda html: [order])
+    orders = await get_purchase_history(client, "a@example.test", "pw", lambda html: [order])
 
     assert orders == [order]
-    assert client.calls == [("login", "a@dollyteria.test"), ("get", SALES_HISTORY_URL)]
+    assert client.calls == [("login", "a@example.test"), ("get", SALES_HISTORY_URL)]
 
 
 async def test_purchase_history_does_not_fetch_when_login_fails() -> None:
     client = FakeClient(login_fails=True)
 
     with pytest.raises(LoginFailed):
-        await get_purchase_history(client, "a@dollyteria.test", "bad", lambda html: [])
+        await get_purchase_history(client, "a@example.test", "bad", lambda html: [])
 
-    assert client.calls == [("login", "a@dollyteria.test")]
+    assert client.calls == [("login", "a@example.test")]
 
 
 class PagesClient:
@@ -95,17 +95,17 @@ class PagesClient:
 
 
 async def test_get_product_fetches_the_product_page() -> None:
-    client = PagesClient({"https://www.dollyteria.com/product/815572": "<page/>"})
+    client = PagesClient({"https://www.example.com/product/815572": "<page/>"})
     summary = ProductSummary(product_id=815572, name="n", price_yen=1, in_stock=True)
 
     result = await get_product(client, 815572, lambda html, pid: summary)
 
     assert result == summary
-    assert client.requested == ["https://www.dollyteria.com/product/815572"]
+    assert client.requested == ["https://www.example.com/product/815572"]
 
 
 async def test_search_products_marks_stock_from_the_available_only_search() -> None:
-    all_url = "https://www.dollyteria.com/product-list?keyword=%E8%B1%86%E6%9C%AC"
+    all_url = "https://www.example.com/product-list?keyword=%E8%B1%86%E6%9C%AC"
     stock_url = all_url + "&available=1"
     client = PagesClient({all_url: "ALL", stock_url: "STOCK"})
     seen: list[tuple[str, set[int]]] = []
@@ -123,7 +123,7 @@ async def test_search_products_marks_stock_from_the_available_only_search() -> N
 
 
 async def test_search_products_within_a_category() -> None:
-    all_url = "https://www.dollyteria.com/product-list/22?keyword=%E8%B1%86%E6%9C%AC"
+    all_url = "https://www.example.com/product-list/22?keyword=%E8%B1%86%E6%9C%AC"
     stock_url = all_url + "&available=1"
     client = PagesClient({all_url: "ALL", stock_url: "STOCK"})
 
@@ -152,7 +152,7 @@ async def test_check_login_retries_transient_errors() -> None:
     client = LoginClient([UpstreamError(), UpstreamError()])
 
     await check_login(
-        client, "a@dollyteria.test", "pw", runtime=_runtime(FakeTime()), deadline_seconds=15
+        client, "a@example.test", "pw", runtime=_runtime(FakeTime()), deadline_seconds=15
     )
 
     assert client.attempts == 3
@@ -163,7 +163,7 @@ async def test_check_login_does_not_retry_a_failed_login() -> None:
 
     with pytest.raises(LoginFailed):
         await check_login(
-            client, "a@dollyteria.test", "bad", runtime=_runtime(FakeTime()), deadline_seconds=15
+            client, "a@example.test", "bad", runtime=_runtime(FakeTime()), deadline_seconds=15
         )
 
     assert client.attempts == 1
@@ -174,5 +174,5 @@ async def test_check_login_gives_up_at_the_deadline() -> None:
 
     with pytest.raises(PreviewTimeout):
         await check_login(
-            client, "a@dollyteria.test", "pw", runtime=_runtime(FakeTime()), deadline_seconds=5
+            client, "a@example.test", "pw", runtime=_runtime(FakeTime()), deadline_seconds=5
         )

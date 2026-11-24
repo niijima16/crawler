@@ -8,7 +8,7 @@
     "webNavigation"
   ],
   "host_permissions": [
-    "https://www.dollyteria.com/*"
+    "https://www.example.com/*"
   ],
   "background": {
     "service_worker": "background.js"
@@ -26,7 +26,7 @@
     },
     {
       "matches": [
-        "https://www.dollyteria.com/cart/confirm*"
+        "https://www.example.com/cart/confirm*"
       ],
       "js": [
         "confirm.js"

@@ -336,7 +336,15 @@ def create_app(deps: Dependencies) -> FastAPI:
             finally:
                 task.cancel()
 
-        return StreamingResponse(events(), media_type="text/event-stream")
+        return StreamingResponse(
+            events(),
+            media_type="text/event-stream",
+            headers={
+                # プロキシ（nginx）がバッファせず、イベントを都度ブラウザへ流すようにする
+                "Cache-Control": "no-cache",
+                "X-Accel-Buffering": "no",
+            },
+        )
 
     cases = deps.favorite_deps
 

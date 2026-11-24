@@ -17,18 +17,13 @@ from spider.application.ports import (
     FavoriteLimitReached,
     UnsupportedPaymentMethod,
 )
-from spider.application.retry import PreviewRuntime
 from spider.domain.account import Account
 from spider.domain.keyword_favorite import GENRES, Genre
-from spider.infrastructure.product_parsers import extract_product_ids, extract_search_results
 from test.fake_repos import MemoryRepos
-from test.fakes import FakeTime, html
 
 pytestmark = pytest.mark.anyio
 
 NOW = datetime(2026, 11, 23, 21, 0, tzinfo=UTC)
-SEARCH = html("product_list_keyword.html")  # 商品ID 775386/810296/810297 を含む
-SITE = "https://www.dollyteria.com"
 
 
 class FakeClock:
@@ -44,61 +39,32 @@ class FakeCategories:
         return self._categories
 
 
-class SearchClient:
-    def __init__(self, body: str) -> None:
-        self.requested: list[str] = []
-        self._body = body
-
-    async def login(self, email: str, password: str) -> None: ...
-    async def post(self, url: str, data: dict[str, str]) -> str:
-        raise NotImplementedError
-
-    async def get(self, url: str) -> str:
-        self.requested.append(url)
-        return self._body
-
-    def get_cookie(self, name: str) -> str | None:
-        return None
-
-    async def aclose(self) -> None: ...
-
-
 def _deps(
-    search_body: str = SEARCH, categories: list[Genre] | None = None
-) -> tuple[KeywordFavoriteDeps, MemoryRepos, list[SearchClient]]:
+    categories: list[Genre] | None = None,
+) -> tuple[KeywordFavoriteDeps, MemoryRepos, list[object]]:
     repos = MemoryRepos()
-    clients: list[SearchClient] = []
     counter = {"n": 0}
 
     def new_id() -> str:
         counter["n"] += 1
         return f"k{counter['n']}"
 
-    def factory() -> SearchClient:
-        c = SearchClient(search_body)
-        clients.append(c)
-        return c
-
-    time = FakeTime()
     deps = KeywordFavoriteDeps(
         keyword_favorites=repos.keyword_favorites,
         accounts=repos.accounts,
         categories=FakeCategories(categories),
         clock=FakeClock(),
         new_id=new_id,
-        client_factory=factory,
-        extract_search_results=extract_search_results,
-        extract_product_ids=extract_product_ids,
-        runtime=PreviewRuntime(sleep=time.sleep, rng=lambda: 1.0, now=time),
     )
-    return deps, repos, clients
+    # register はサイトへ問い合わせない。クライアントを作らないことを示す空リスト。
+    return deps, repos, []
 
 
 async def _account(repos: MemoryRepos, account_id: str = "a1") -> None:
     await repos.accounts.add(Account(id=account_id, label="A", email=f"{account_id}@x.test"), "ENC")
 
 
-async def test_register_records_the_current_products_as_baseline() -> None:
+async def test_register_does_not_record_a_baseline_so_existing_products_trigger() -> None:
     deps, repos, _ = _deps()
     await _account(repos)
 
@@ -106,11 +72,9 @@ async def test_register_records_the_current_products_as_baseline() -> None:
 
     assert (fav.keyword, fav.category_id, fav.category_label) == ("豆本", 22, "SuperDollfie > 本体")
     assert (fav.payment_method, fav.price_cap_yen, fav.enabled) == ("8", 3000, True)
-    # 登録時点の商品は baseline（seen）に入り、以後の対象外になる
-    assert not await repos.keyword_favorites.claim_product(fav.id, 775386)
-    assert not await repos.keyword_favorites.claim_product(fav.id, 810297)
-    # 登録時に無かった商品は新着として claim できる
-    assert await repos.keyword_favorites.claim_product(fav.id, 999999)
+    # 登録時点の商品も seen に入れない＝最初の監視でトリガーする（既存も通知）
+    assert await repos.keyword_favorites.claim_product(fav.id, 775386)
+    assert await repos.keyword_favorites.claim_product(fav.id, 810297)
 
 
 async def test_register_needs_an_existing_account() -> None:
@@ -187,7 +151,7 @@ async def test_list_update_toggle_delete() -> None:
         await delete_keyword_favorite(deps, fav.id)
 
 
-async def test_register_stores_the_baseline_in_the_add_so_there_is_no_window() -> None:
+async def test_register_adds_once_with_no_seen_so_the_first_check_notifies() -> None:
     deps, repos, _ = _deps()
     await _account(repos)
     adds: list[tuple[bool, set[int]]] = []
@@ -202,9 +166,9 @@ async def test_register_stores_the_baseline_in_the_add_so_there_is_no_window() -
 
     await register_keyword_favorite(deps, "a1", "豆本", 22, "8", None)
 
-    # add は1回だけ、baseline（現在の商品ID）を伴って呼ばれる（enabled のまま空で作る窓が無い）
+    # add は1回だけ、seen は空（既存も最初の監視でトリガーさせるため baseline を記録しない）
     assert len(adds) == 1
-    assert adds[0][1] == {775386, 810296, 810297}
+    assert adds[0][1] == set()
 
 
 async def test_register_uses_categories_from_the_provider() -> None:

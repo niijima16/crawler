@@ -832,6 +832,25 @@ describe("auto open on new arrivals", () => {
     );
   });
 
+  it("refreshes the unread count right after marking all as read", async () => {
+    let unread = 1;
+    api({
+      "GET /api/notifications": () => json(200, { unread, items: [FIRST] }),
+      "POST /api/notifications/read": () => {
+        unread = 0;
+        return json(200, { unread: 0 });
+      },
+    });
+    await ready();
+    fireEvent.click(screen.getByRole("tab", { name: /自動/ }));
+    await screen.findByText("未読 1");
+
+    fireEvent.click(screen.getByRole("button", { name: "すべて既読にする" }));
+
+    // 1秒ごとの取得を待たずに反映する（タイマーは進めない）
+    await waitFor(() => expect(screen.queryByText("未読 1")).toBeNull(), { timeout: 500 });
+  });
+
   it("turning the switch off empties the queue", async () => {
     saveAutoOpen(true);
     await ready();

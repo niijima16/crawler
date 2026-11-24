@@ -138,3 +138,10 @@ it("shows neither on the first attempt with an empty queue", () => {
   expect(region).not.toHaveTextContent("やり直しています");
   expect(region).not.toHaveTextContent("順番待ち");
 });
+
+it("hides the restarting notice once the handoff has failed", () => {
+  const { source, region } = setupAuto({ attempt: 3 });
+  act(() => source.emit("error", { reason: "timeout" }));
+  expect(region).toHaveTextContent("引き継ぎに失敗しました");
+  expect(region).not.toHaveTextContent("やり直しています");
+});

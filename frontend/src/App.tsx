@@ -330,7 +330,10 @@ export function App() {
             status={status}
             notifications={notes}
             now={now}
-            onChanged={loadStatus}
+            onChanged={() => {
+              loadStatus();
+              loadNotes(); // 既読にした結果をすぐ反映する
+            }}
             onOpenConfirmation={openArrival}
             autoOpen={autoOpen}
             onAutoOpenChange={changeAutoOpen}

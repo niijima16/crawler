@@ -94,7 +94,7 @@ export function HandoffProgress({
           );
         })}
       </ul>
-      {attempt > 1 && (
+      {attempt > 1 && !error && (
         <div className="banner warn">混雑のため、引き継ぎをやり直しています（{attempt}回目）</div>
       )}
       {queued > 0 && (

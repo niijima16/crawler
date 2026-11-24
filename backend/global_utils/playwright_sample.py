@@ -1,9 +1,25 @@
+"""拡張（browser-extension/）が開いた確認画面に、起動済みの Chrome へ CDP で接続して処理する。
+
+事前準備（1回だけ）:
+  1. 専用プロファイルで、リモートデバッグを有効にして Chrome を起動する
+     （Chrome 136 以降は既定プロファイルではリモートデバッグが効かないため、--user-data-dir が必要）
+       "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
+         --remote-debugging-port=9222 --user-data-dir="$HOME/.pickup-chrome"
+  2. その Chrome に browser-extension/ を読み込む（README 参照）
+使い方:
+  このスクリプトを起動 → ツール画面で「確認画面を開く」。拡張が開いたタブを見つけて処理する。
+"""
 import re
-from playwright.sync_api import Playwright, sync_playwright, expect, Locator, Page
+import time
+from playwright.sync_api import Browser, Playwright, sync_playwright, expect, Locator, Page
 from human_cursor import SyncHumanCursor
 
 DRY_RUN = True          # True なら購入ボタンの手前で止まる。本番で押すときだけ False にする
 TIMEOUT = 10_000        # 要素を待つ時間（ミリ秒）
+CDP_URL = "http://localhost:9222"
+CONFIRM_URL = "https://www.dollyteria.com/cart/confirm"
+TAB_WAIT_SEC = 300      # 拡張が確認画面のタブを開くのを待つ時間
+READY_TIMEOUT = 90_000  # 503 の自動リロード（拡張側で最大約1分）を待つ時間（ミリ秒）
 
 
 def try_human_click(cursor: SyncHumanCursor, loc: Locator) -> bool:
@@ -65,16 +81,31 @@ def click_buy(page: Page, cursor: SyncHumanCursor) -> None:
         raise RuntimeError("購入後の状態がわからない。二重注文の恐れがあるので手動で確認してください")
 
 
+def wait_confirm_page(browser: Browser) -> Page:
+    """拡張が開いた確認画面のタブが現れるまで待って返す"""
+    deadline = time.monotonic() + TAB_WAIT_SEC
+    while time.monotonic() < deadline:
+        for context in browser.contexts:
+            for page in context.pages:
+                if page.url.startswith(CONFIRM_URL):
+                    return page
+        time.sleep(0.5)
+    raise TimeoutError("確認画面のタブが開かれなかった")
+
+
 def run(playwright: Playwright) -> None:
-    browser = playwright.chromium.launch(channel="chrome", headless=False)
-    context = browser.new_context()
+    # 自分で起動せず、拡張が入った起動済みの Chrome に接続する
+    browser = playwright.chromium.connect_over_cdp(CDP_URL)
+    print("[info] 拡張が確認画面を開くのを待っています…")
+    page = wait_confirm_page(browser)
+    context = page.context
     context.tracing.start(screenshots=True, snapshots=True)   # 失敗したときの調査用
-    page = context.new_page()
     page.set_default_timeout(TIMEOUT)
     cursor = SyncHumanCursor(page)
 
     try:
-        page.goto("https://www.dollyteria.com/cart/confirm", wait_until="domcontentloaded")
+        # 混雑時は拡張がリロードを繰り返すので、同意チェックが出るまで待つ
+        page.get_by_role("checkbox", name="同意する").wait_for(timeout=READY_TIMEOUT)
         check_agree(page, cursor)
         click_buy(page, cursor)
         print("[ok] 完了:", page.url)
@@ -86,8 +117,7 @@ def run(playwright: Playwright) -> None:
     else:
         context.tracing.stop()
     finally:
-        context.close()
-        browser.close()
+        browser.close()   # CDP 接続では切断だけ（ユーザーの Chrome とタブは閉じない）
 
 
 with sync_playwright() as playwright:

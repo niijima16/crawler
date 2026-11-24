@@ -76,7 +76,7 @@ def test_models_are_immutable_and_hold_no_password() -> None:
         state_version=0,
         state_changed_at=NOW,
     )
-    account = Account(id="a1", label="テスト用 A", email="a@example.test")
+    account = Account(id="a1", label="テスト用 A", email="a@dollyteria.test")
     note = Notification(
         id="n1",
         favorite_id="f1",

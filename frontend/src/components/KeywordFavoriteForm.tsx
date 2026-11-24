@@ -103,7 +103,7 @@ export function KeywordFavoriteForm({ accountId, genres, methods, onAdded }: Pro
         </button>
       </form>
       <p className="hint">
-        クレジットカードは選べません（確認画面まで進めないため）。登録時点の商品は対象外、以後の新着が対象です。
+        クレジットカードは選べません（確認画面まで進めないため）。登録後の最初の監視で、今ある購入可能な一致商品も通知します（その後は新しく出たものが対象）。
       </p>
       {error && <div className="banner err">{error}</div>}
     </section>

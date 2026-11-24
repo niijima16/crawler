@@ -74,7 +74,7 @@ describe("account gate", () => {
     api();
     await ready();
 
-    expect(screen.getAllByText("t***@example.com").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("t***@dollyteria").length).toBeGreaterThan(0);
     expect(screen.getByRole("button", { name: "検索" })).toBeEnabled();
   });
 
@@ -84,7 +84,7 @@ describe("account gate", () => {
     render(<App />);
     await screen.findByLabelText("パスワード");
 
-    await user.type(screen.getByLabelText("メールアドレス"), "tester@example.com");
+    await user.type(screen.getByLabelText("メールアドレス"), "tester@dollyteria");
     await user.type(screen.getByLabelText("パスワード"), "secret-pw");
     await user.click(screen.getByRole("button", { name: "ログインを確認して追加" }));
 
@@ -120,7 +120,7 @@ describe("account gate", () => {
     await user.click(screen.getByRole("button", { name: "削除" }));
     await user.click(screen.getByRole("button", { name: "削除する" }));
 
-    await waitFor(() => expect(screen.queryByText("s***@example.com")).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByText("s***@dollyteria")).not.toBeInTheDocument());
   });
 });
 

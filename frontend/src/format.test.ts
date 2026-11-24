@@ -2,7 +2,7 @@ import { formatRemaining, maskEmail, workerState } from "./format";
 
 describe("maskEmail", () => {
   it("hides the local part", () => {
-    expect(maskEmail("tester@example.com")).toBe("t***@example.com");
+    expect(maskEmail("tester@dollyteria")).toBe("t***@dollyteria");
   });
 });
 

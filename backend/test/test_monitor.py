@@ -99,7 +99,7 @@ class Env:
 
     async def account(self, account_id: str = "a1", password: str = "secret-pw") -> None:
         await self.repos.accounts.add(
-            Account(id=account_id, label="テスト用", email=f"{account_id}@example.test"),
+            Account(id=account_id, label="テスト用", email=f"{account_id}@dollyteria.test"),
             self.box.encrypt(password),
         )
 

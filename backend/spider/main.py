@@ -78,10 +78,6 @@ app = create_app(
             categories=_categories,
             clock=SystemClock(),
             new_id=new_id,
-            client_factory=HttpSiteClient,
-            extract_search_results=extract_search_results,
-            extract_product_ids=extract_product_ids,
-            runtime=_runtime,
         ),
         on_startup=_setup,
     )

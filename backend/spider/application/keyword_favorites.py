@@ -9,14 +9,10 @@ from spider.application.ports import (
     EntityNotFound,
     FavoriteLimitReached,
     KeywordFavoriteRepository,
-    SiteClient,
     UnsupportedPaymentMethod,
 )
-from spider.application.products import search_products
-from spider.application.retry import PreviewRuntime
 from spider.domain.keyword_favorite import KeywordFavorite
 from spider.domain.payment import get_payment_method
-from spider.domain.product import ProductSummary
 
 MAX_KEYWORD_FAVORITES = 10
 
@@ -27,10 +23,6 @@ class KeywordFavoriteDeps(NamedTuple):
     categories: CategoryProvider
     clock: Clock
     new_id: Callable[[], str]
-    client_factory: Callable[[], SiteClient]
-    extract_search_results: Callable[[str, set[int]], list[ProductSummary]]
-    extract_product_ids: Callable[[str], set[int]]
-    runtime: PreviewRuntime
 
 
 def _check_payment_method(payment_method_id: str) -> None:
@@ -41,23 +33,6 @@ def _check_payment_method(payment_method_id: str) -> None:
         raise UnsupportedPaymentMethod("unknown") from None
     if not method.preview_supported:
         raise UnsupportedPaymentMethod("preview")
-
-
-async def _current_product_ids(
-    deps: KeywordFavoriteDeps, keyword: str, category_id: int
-) -> set[int]:
-    client = deps.client_factory()
-    try:
-        results = await search_products(
-            client,
-            keyword,
-            deps.extract_search_results,
-            deps.extract_product_ids,
-            category_id=category_id,
-        )
-    finally:
-        await client.aclose()
-    return {p.product_id for p in results}
 
 
 async def register_keyword_favorite(
@@ -78,7 +53,6 @@ async def register_keyword_favorite(
         raise FavoriteLimitReached
     if any(f.keyword == keyword and f.category_id == category_id for f in existing):
         raise DuplicateFavorite
-    baseline = await _current_product_ids(deps, keyword, category_id)
     favorite = KeywordFavorite(
         id=deps.new_id(),
         account_id=account_id,
@@ -91,8 +65,8 @@ async def register_keyword_favorite(
         new_arrival_count=0,
         created_at=deps.clock.now(),
     )
-    # baseline を伴って1回で作る（作成～基準記録の窓を作らない）
-    await deps.keyword_favorites.add(favorite, baseline)
+    # seen は空で作る。最初の監視で、既存の購入可能な一致商品も1回ずつトリガーする。
+    await deps.keyword_favorites.add(favorite)
     return favorite
 
 

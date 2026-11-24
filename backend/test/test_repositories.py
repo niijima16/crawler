@@ -114,7 +114,7 @@ def _note(nid: str, minutes: int, read: bool = False) -> Notification:
 
 
 async def test_accounts_store_the_encrypted_password_apart_from_the_account(repos: Repos) -> None:
-    account = Account(id="a1", label="テスト用 A", email="a@example.test")
+    account = Account(id="a1", label="テスト用 A", email="a@dollyteria.test")
 
     await repos.accounts.add(account, "ENCRYPTED")
 
@@ -124,7 +124,7 @@ async def test_accounts_store_the_encrypted_password_apart_from_the_account(repo
 
 
 async def test_accounts_can_be_deleted(repos: Repos) -> None:
-    await repos.accounts.add(Account(id="a1", label="A", email="a@example.test"), "X")
+    await repos.accounts.add(Account(id="a1", label="A", email="a@dollyteria.test"), "X")
 
     await repos.accounts.delete("a1")
 

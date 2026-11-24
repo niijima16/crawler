@@ -13,7 +13,7 @@ describe("parseProductCode", () => {
     expect(parseProductCode(input)).toBe(expected);
   });
 
-  it.each(["", "   ", "abc", "12ab", "product/", "https://example.test/"])(
+  it.each(["", "   ", "abc", "12ab", "product/", "https://dollyteria.test/"])(
     "returns null for %j",
     (input) => {
       expect(parseProductCode(input)).toBeNull();

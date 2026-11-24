@@ -40,7 +40,7 @@ from test.fakes import (
     html,
 )
 
-BODY = {"email": "a@example.test", "password": "secret-pw"}
+BODY = {"email": "a@dollyteria.test", "password": "secret-pw"}
 SEARCH_ALL = "https://www.dollyteria.com/product-list?keyword=%E8%B1%86%E6%9C%AC"
 SEARCH_STOCK = SEARCH_ALL + "&available=1"
 CAT_SEARCH = "https://www.dollyteria.com/product-list/22?keyword=%E8%B1%86%E6%9C%AC"
@@ -140,7 +140,7 @@ def _deps(
         runtime=PreviewRuntime(sleep=clock.sleep, rng=lambda: 1.0, now=clock),
         login_deadline_seconds=15.0,
         favorite_deps=_favorite_deps(factory, clock, shared_repos),
-        keyword_deps=_keyword_deps(factory, clock, shared_repos, categories),
+        keyword_deps=_keyword_deps(shared_repos, categories),
         on_startup=_noop,
     )
 
@@ -177,9 +177,7 @@ def _favorite_deps(factory: Any, clock: FakeTime, repos: MemoryRepos) -> Favorit
     )
 
 
-def _keyword_deps(
-    factory: Any, clock: FakeTime, repos: MemoryRepos, categories: list[Genre] | None = None
-) -> KeywordFavoriteDeps:
+def _keyword_deps(repos: MemoryRepos, categories: list[Genre] | None = None) -> KeywordFavoriteDeps:
     counter = {"n": 0}
 
     def new_id() -> str:
@@ -192,10 +190,6 @@ def _keyword_deps(
         categories=_FakeCategories(categories),
         clock=_FixedClock(),
         new_id=new_id,
-        client_factory=factory,
-        extract_search_results=extract_search_results,
-        extract_product_ids=extract_product_ids,
-        runtime=PreviewRuntime(sleep=clock.sleep, rng=lambda: 1.0, now=clock),
     )
 
 
@@ -241,7 +235,7 @@ def test_login_failure_is_401_without_credentials_in_body() -> None:
 
     assert response.status_code == 401
     assert "secret-pw" not in response.text
-    assert "a@example.test" not in response.text
+    assert "a@dollyteria.test" not in response.text
 
 
 def test_upstream_error_is_502() -> None:
@@ -549,7 +543,7 @@ def test_register_and_list_accounts_never_expose_the_password() -> None:
         listed = client.get("/api/accounts")
 
     assert created.status_code == 200
-    assert created.json() == {"id": "id1", "label": "テスト用 A", "email": "a@example.test"}
+    assert created.json() == {"id": "id1", "label": "テスト用 A", "email": "a@dollyteria.test"}
     assert listed.json() == [created.json()]
     assert "secret-pw" not in created.text + listed.text
 
@@ -688,7 +682,7 @@ def test_preview_with_a_saved_account_uses_its_stored_credentials() -> None:
     assert response.status_code == 200
     assert response.json()["preview"]["item_name"] == "SD16/OF:靴 U-26-07-22-192-TN-ZU"
     logins = [d for _, m, _, d in site.log if m == "LOGIN"]
-    assert logins[-1] == {"email": "a@example.test"}
+    assert logins[-1] == {"email": "a@dollyteria.test"}
     assert "secret-pw" not in response.text
 
 
@@ -705,7 +699,7 @@ def test_preview_needs_either_an_account_or_credentials() -> None:
     with _app(FakeSite().factory) as client:
         response = client.post("/api/store-pickup-preview", json={"product_id": PID})
         partial = client.post(
-            "/api/store-pickup-preview", json={"product_id": PID, "email": "a@example.test"}
+            "/api/store-pickup-preview", json={"product_id": PID, "email": "a@dollyteria.test"}
         )
 
     assert response.status_code == 422 and partial.status_code == 422
@@ -718,7 +712,9 @@ def test_preview_with_credentials_that_cannot_be_decrypted_is_401() -> None:
     with TestClient(create_app(_deps(site.factory, repos=repos))) as client:
         account_id = _with_account(client)
         asyncio.run(
-            repos.accounts.add(Account(id=account_id, label="x", email="a@example.test"), "garbage")
+            repos.accounts.add(
+                Account(id=account_id, label="x", email="a@dollyteria.test"), "garbage"
+            )
         )
         response = client.post(
             "/api/store-pickup-preview", json={"account_id": account_id, "product_id": PID}

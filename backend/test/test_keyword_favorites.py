@@ -41,7 +41,7 @@ class FakeCategories:
 
 def _deps(
     categories: list[Genre] | None = None,
-) -> tuple[KeywordFavoriteDeps, MemoryRepos, list[object]]:
+) -> tuple[KeywordFavoriteDeps, MemoryRepos]:
     repos = MemoryRepos()
     counter = {"n": 0}
 
@@ -56,8 +56,7 @@ def _deps(
         clock=FakeClock(),
         new_id=new_id,
     )
-    # register はサイトへ問い合わせない。クライアントを作らないことを示す空リスト。
-    return deps, repos, []
+    return deps, repos
 
 
 async def _account(repos: MemoryRepos, account_id: str = "a1") -> None:
@@ -65,7 +64,7 @@ async def _account(repos: MemoryRepos, account_id: str = "a1") -> None:
 
 
 async def test_register_does_not_record_a_baseline_so_existing_products_trigger() -> None:
-    deps, repos, _ = _deps()
+    deps, repos = _deps()
     await _account(repos)
 
     fav = await register_keyword_favorite(deps, "a1", "豆本", 22, "8", 3000)
@@ -78,13 +77,13 @@ async def test_register_does_not_record_a_baseline_so_existing_products_trigger(
 
 
 async def test_register_needs_an_existing_account() -> None:
-    deps, _, _ = _deps()
+    deps, _ = _deps()
     with pytest.raises(EntityNotFound):
         await register_keyword_favorite(deps, "missing", "豆本", 22, "8", None)
 
 
 async def test_register_rejects_an_unknown_genre() -> None:
-    deps, repos, _ = _deps()
+    deps, repos = _deps()
     await _account(repos)
     with pytest.raises(KeyError):
         await register_keyword_favorite(deps, "a1", "豆本", 999999, "8", None)
@@ -94,17 +93,16 @@ async def test_register_rejects_an_unknown_genre() -> None:
 async def test_register_rejects_a_payment_method_that_cannot_reach_confirmation(
     method: str,
 ) -> None:
-    deps, repos, clients = _deps()
+    deps, repos = _deps()
     await _account(repos)
     with pytest.raises(UnsupportedPaymentMethod) as info:
         await register_keyword_favorite(deps, "a1", "豆本", 22, method, None)
-    assert info.value.reason == "preview"
-    assert clients == []  # サイトへ問い合わせない
+    assert info.value.reason == "preview"  # 支払方法の検証で弾き、サイトへは進まない
 
 
 @pytest.mark.parametrize("method", ["8", "3", "10000006", "10000002_1"])
 async def test_register_allows_methods_that_reach_confirmation(method: str) -> None:
-    deps, repos, _ = _deps()
+    deps, repos = _deps()
     await _account(repos)
     fav = await register_keyword_favorite(deps, "a1", "豆本", 22, method, None)
     assert fav.payment_method == method
@@ -112,7 +110,7 @@ async def test_register_allows_methods_that_reach_confirmation(method: str) -> N
 
 async def test_the_limit_is_ten_per_account() -> None:
     assert MAX_KEYWORD_FAVORITES == 10
-    deps, repos, _ = _deps()
+    deps, repos = _deps()
     await _account(repos)
     for n in range(MAX_KEYWORD_FAVORITES):
         await register_keyword_favorite(deps, "a1", f"kw{n}", 22, "8", None)
@@ -121,7 +119,7 @@ async def test_the_limit_is_ten_per_account() -> None:
 
 
 async def test_the_same_keyword_and_genre_cannot_be_registered_twice() -> None:
-    deps, repos, _ = _deps()
+    deps, repos = _deps()
     await _account(repos)
     await register_keyword_favorite(deps, "a1", "豆本", 22, "8", None)
     with pytest.raises(DuplicateFavorite):
@@ -131,7 +129,7 @@ async def test_the_same_keyword_and_genre_cannot_be_registered_twice() -> None:
 
 
 async def test_list_update_toggle_delete() -> None:
-    deps, repos, _ = _deps()
+    deps, repos = _deps()
     await _account(repos)
     fav = await register_keyword_favorite(deps, "a1", "豆本", 22, "8", None)
 
@@ -152,7 +150,7 @@ async def test_list_update_toggle_delete() -> None:
 
 
 async def test_register_adds_once_with_no_seen_so_the_first_check_notifies() -> None:
-    deps, repos, _ = _deps()
+    deps, repos = _deps()
     await _account(repos)
     adds: list[tuple[bool, set[int]]] = []
 
@@ -174,7 +172,7 @@ async def test_register_adds_once_with_no_seen_so_the_first_check_notifies() -> 
 async def test_register_uses_categories_from_the_provider() -> None:
     # 提供されたカテゴリ（固定8件ではなく動的取得を想定）の id とラベルを使う
     provided = [Genre(category_id=215, label="新品ウィッグ > 9-10inch(SD)")]
-    deps, repos, _ = _deps(categories=provided)
+    deps, repos = _deps(categories=provided)
     await _account(repos)
 
     fav = await register_keyword_favorite(deps, "a1", "SD", 215, "8", None)

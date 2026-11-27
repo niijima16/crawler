@@ -99,3 +99,17 @@ async def test_falls_back_when_the_page_has_no_categories() -> None:
     result = await provider.list_categories()
 
     assert result == list(GENRES)
+
+
+async def test_keeps_the_last_fetched_genres_when_a_refetch_fails() -> None:
+    client = FakeClient({"https://www.dollyteria.com/product-list/22": "<html>ok</html>"})
+    clock = FakeClock()
+    provider = _provider(client, clock)
+    await provider.list_categories()
+
+    client._error = UpstreamError()  # 21時の混雑などで 503
+    clock.now += 101  # TTL超過
+    result = await provider.list_categories()
+
+    assert result == SAMPLE
+    assert len(client.gets) == 2  # 取り直しは試みる

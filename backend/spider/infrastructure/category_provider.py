@@ -9,7 +9,10 @@ _CATEGORY_PAGE = f"{SITE}/product-list/22"
 
 
 class SiteCategoryProvider:
-    """サイトからカテゴリ一覧を取得し TTL の間キャッシュする。失敗時は GENRES に戻す。"""
+    """サイトからカテゴリ一覧を取得し TTL の間キャッシュする。
+
+    取り直しに失敗したら前回の一覧を返す（21時の混雑の 503 など）。一度も取れていなければ GENRES。
+    """
 
     def __init__(
         self,
@@ -34,7 +37,7 @@ class SiteCategoryProvider:
             self._cached = categories
             self._fetched_at = self._now()
             return categories
-        return list(GENRES)
+        return self._cached or list(GENRES)
 
     async def _fetch(self) -> list[Genre]:
         client = self._client_factory()

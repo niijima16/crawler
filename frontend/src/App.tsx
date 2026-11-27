@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError, api } from "./api";
 import { type Arrival, collectArrivals, enqueue, loadAutoOpen, saveAutoOpen } from "./autoOpen";
 import { AccountCard } from "./components/AccountCard";
-import { AutoPurchaseTab } from "./components/AutoPurchaseTab";
+import { type AutoLine, AutoPurchaseTab } from "./components/AutoPurchaseTab";
 import { FavoritesTab } from "./components/FavoritesTab";
 import { HandoffProgress } from "./components/HandoffProgress";
 import { Header } from "./components/Header";
@@ -42,7 +42,30 @@ type HandoffRun = {
   paymentMethod: string;
   auto: boolean;
   attempt: number;
+  /** 1行の表示に使う、元の新着通知の文言（手動は空） */
+  label: string;
 };
+
+const EXTENSION_MISSING = "extension_missing";
+
+// 自動の引き継ぎの1行（実行中はここから作り、終わったら結果を残す）
+function runningLine(run: HandoffRun, queued: number): AutoLine {
+  const retry = run.attempt > 1 ? `（混雑のためやり直し ${run.attempt}回目）` : "";
+  const wait = queued > 0 ? `・順番待ち ${queued}件` : "";
+  return { text: `自動: ${run.label} を引き継ぎ中${retry}${wait}`, tone: "warn" };
+}
+
+function resultLine(run: HandoffRun, reason: string | null): AutoLine {
+  if (reason === null) return { text: `自動: ${run.label} の確認画面を開きました`, tone: "ok" };
+  if (reason === EXTENSION_MISSING)
+    return {
+      text: `自動: ${run.label} の確認画面を開けませんでした（拡張機能が入っていません）`,
+      tone: "err",
+    };
+  if (reason === "not_purchasable")
+    return { text: `自動: ${run.label} は売り切れでした`, tone: "err" };
+  return { text: `自動: ${run.label} の引き継ぎに失敗しました（${reason}）`, tone: "err" };
+}
 
 export function App() {
   const [tab, setTab] = useState<Tab>("search");
@@ -62,6 +85,7 @@ export function App() {
   const autoOpenRef = useRef(autoOpen);
   const seenRef = useRef<Set<string> | null>(null);
   const [queue, setQueue] = useState<Arrival[]>([]);
+  const [autoResult, setAutoResult] = useState<AutoLine | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [favorites, setFavorites] = useState<Favorite[]>([]);
   const [genres, setGenres] = useState<Genre[]>([]);
@@ -197,30 +221,42 @@ export function App() {
   }
 
   // 引き継ぎ（確認画面まで）を開始する。進捗は HandoffProgress が SSE で表示する。
-  const startHandoff = useCallback((productId: number, paymentMethod: string, auto = false) => {
-    handoffIds.current += 1;
-    setHandoff({ id: handoffIds.current, productId, paymentMethod, auto, attempt: 1 });
-  }, []);
+  const startHandoff = useCallback(
+    (productId: number, paymentMethod: string, auto = false, label = "") => {
+      handoffIds.current += 1;
+      setHandoff({ id: handoffIds.current, productId, paymentMethod, auto, attempt: 1, label });
+    },
+    [],
+  );
 
   // 引き継ぎが動いていなければ、順番待ちの一番新しい新着通知を開く（同時に1件だけ）
   useEffect(() => {
     if (handoff !== null || accountId === null || queue.length === 0) return;
     const [next, ...rest] = queue;
     setQueue(rest);
-    startHandoff(next.product_id, next.payment_method ?? DEFAULT_PAYMENT_ID, true);
+    startHandoff(next.product_id, next.payment_method ?? DEFAULT_PAYMENT_ID, true, next.message);
   }, [handoff, accountId, queue, startHandoff]);
 
   function changeAutoOpen(on: boolean) {
     setAutoOpen(on);
     autoOpenRef.current = on;
     saveAutoOpen(on);
-    if (!on) setQueue([]);
+    if (on) return;
+    // OFF: 順番待ちを空にし、実行中の自動の引き継ぎも止める（ダイアログが無く、ほかに止める手段がないため）
+    setQueue([]);
+    setHandoff((h) => (h?.auto ? null : h));
+    setAutoResult(null);
+  }
+
+  // 自動の引き継ぎを終えて結果を1行に残す（すぐ次へ進む）
+  function finishAuto(run: HandoffRun, reason: string | null) {
+    setAutoResult(resultLine(run, reason));
+    setHandoff((h) => (h?.id === run.id ? null : h));
   }
 
   // 自動の引き継ぎだけ: 混雑ならやり直し、それ以外（売り切れなど）で止まったらすぐ次へ
   function handoffFailed(run: HandoffRun, reason: string) {
-    // スイッチ OFF の後は自動の扱いをやめ、手動と同じくエラーを表示したままにする
-    if (!run.auto || !autoOpenRef.current) return;
+    if (!run.auto) return;
     if (RESTART_REASONS.has(reason)) {
       setTimeout(() => {
         setHandoff((h) =>
@@ -228,7 +264,7 @@ export function App() {
         );
       }, Math.random() * RESTART_MAX_DELAY_MS);
     } else {
-      setHandoff((h) => (h?.id === run.id ? null : h));
+      finishAuto(run, reason);
     }
   }
 
@@ -294,6 +330,7 @@ export function App() {
                 account={account ? maskEmail(account.email) : null}
                 running={running}
                 locked={locked}
+                blocked={handoff?.auto ?? false}
                 onRun={() =>
                   mode === "order"
                     ? setConfirming(true)
@@ -337,6 +374,8 @@ export function App() {
             onOpenConfirmation={openArrival}
             autoOpen={autoOpen}
             onAutoOpenChange={changeAutoOpen}
+            autoLine={handoff?.auto ? runningLine(handoff, queue.length) : autoResult}
+            manualBlocked={handoff?.auto ?? false}
           />
         </div>
       )}
@@ -350,7 +389,8 @@ export function App() {
         />
       )}
       {handoff && accountId !== null && (
-        <div className="backdrop">
+        // 自動の引き継ぎは進捗ダイアログを出さない（SSE と拡張への引き継ぎは同じく動く）
+        <div className={handoff.auto ? undefined : "backdrop"} hidden={handoff.auto}>
           <HandoffProgress
             key={`${handoff.id}-${handoff.attempt}`}
             accountId={accountId}
@@ -359,11 +399,11 @@ export function App() {
             extensionInstalled={isExtensionInstalled()}
             onReady={(h) => {
               if (isExtensionInstalled()) openConfirmation(h.cookie_value);
+              if (handoff.auto)
+                finishAuto(handoff, isExtensionInstalled() ? null : EXTENSION_MISSING);
             }}
             onClose={() => setHandoff(null)}
             auto={handoff.auto}
-            attempt={handoff.attempt}
-            queued={queue.length}
             onError={(reason) => handoffFailed(handoff, reason)}
           />
         </div>

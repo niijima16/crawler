@@ -90,7 +90,7 @@ it("tells the user to install the extension when it is missing", () => {
   expect(region).toHaveTextContent("拡張機能を入れると");
 });
 
-function setupAuto(props: { attempt?: number; queued?: number } = {}) {
+function setupAuto() {
   const onError = vi.fn();
   render(
     <HandoffProgress
@@ -101,14 +101,11 @@ function setupAuto(props: { attempt?: number; queued?: number } = {}) {
       onReady={vi.fn()}
       onClose={vi.fn()}
       auto
-      attempt={props.attempt ?? 1}
-      queued={props.queued ?? 0}
       onError={onError}
     />,
   );
   const source = FakeEventSource.last as FakeEventSource;
-  const region = screen.getByRole("region", { name: "確認画面への引き継ぎ" });
-  return { source, region, onError };
+  return { source, onError };
 }
 
 it("asks the server to persist (auto=true) only for an auto handoff", () => {
@@ -125,23 +122,4 @@ it("tells the parent why the handoff failed", () => {
   const { source, onError } = setupAuto();
   act(() => source.emit("error", { reason: "timeout" }));
   expect(onError).toHaveBeenCalledWith("timeout");
-});
-
-it("shows which attempt the restarted handoff is and how many are queued", () => {
-  const { region } = setupAuto({ attempt: 12, queued: 2 });
-  expect(region).toHaveTextContent("混雑のため、引き継ぎをやり直しています（12回目）");
-  expect(region).toHaveTextContent("順番待ち: 2件");
-});
-
-it("shows neither on the first attempt with an empty queue", () => {
-  const { region } = setupAuto();
-  expect(region).not.toHaveTextContent("やり直しています");
-  expect(region).not.toHaveTextContent("順番待ち");
-});
-
-it("hides the restarting notice once the handoff has failed", () => {
-  const { source, region } = setupAuto({ attempt: 3 });
-  act(() => source.emit("error", { reason: "timeout" }));
-  expect(region).toHaveTextContent("引き継ぎに失敗しました");
-  expect(region).not.toHaveTextContent("やり直しています");
 });

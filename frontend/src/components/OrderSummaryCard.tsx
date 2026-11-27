@@ -9,6 +9,8 @@ type Props = {
   account: string | null;
   running: boolean;
   locked: boolean;
+  /** 自動の引き継ぎの実行中（手動で上書きしないよう押せなくする） */
+  blocked?: boolean;
   onRun: () => void;
 };
 
@@ -19,6 +21,7 @@ export function OrderSummaryCard({
   account,
   running,
   locked,
+  blocked = false,
   onRun,
 }: Props) {
   const label =
@@ -71,11 +74,14 @@ export function OrderSummaryCard({
       <button
         type="button"
         className={`block${mode === "order" ? " order" : ""}`}
-        disabled={locked || running || product === null}
+        disabled={locked || running || blocked || product === null}
         onClick={onRun}
       >
         {label}
       </button>
+      {blocked && (
+        <p className="hint">自動の引き継ぎ中は使えません（スイッチを OFF にすると使えます）</p>
+      )}
       <p className="muted center">送料・合計は確認画面で表示されます</p>
     </section>
   );

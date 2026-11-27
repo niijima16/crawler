@@ -12,7 +12,13 @@ type Props = {
   onOpenConfirmation: (note: AppNotification) => void;
   autoOpen: boolean;
   onAutoOpenChange: (on: boolean) => void;
+  /** 自動で開いた引き継ぎの最新の状態（1行） */
+  autoLine?: AutoLine | null;
+  /** 自動の引き継ぎの実行中（手動の「確認画面を開く」を押せなくする） */
+  manualBlocked?: boolean;
 };
+
+export type AutoLine = { text: string; tone: "ok" | "warn" | "err" };
 
 const WORKER_TEXT = {
   running: { text: "稼働中", className: "ok" },
@@ -28,6 +34,8 @@ export function AutoPurchaseTab({
   onOpenConfirmation,
   autoOpen,
   onAutoOpenChange,
+  autoLine = null,
+  manualBlocked = false,
 }: Props) {
   const [error, setError] = useState<string | null>(null);
 
@@ -109,7 +117,9 @@ export function AutoPurchaseTab({
             <b>新着通知で自動で確認画面を開く</b>
             <span className="muted block">
               ON
-              の間、新着通知が届いたら（画面を開いたときの未読も）自動で引き継ぎを始めます。同時に動かすのは1件だけで、ほかは順番待ち（新しい順）になります。混雑で失敗したら、売り切れるまでやり直します（止めるときは引き継ぎを閉じる）。この画面を開いたままにしてください。
+              の間、新着通知が届いたら（画面を開いたときの未読も）自動で引き継ぎを始めます。進捗は表示せず、下に1行だけ結果を出します。同時に動かすのは1件だけで、ほかは順番待ち（新しい順）。確認画面まで届いたらすぐ次を開きます（前に開いた確認画面は使えなくなることがあります）。混雑で失敗したら売り切れるまでやり直します。止めるときは
+              OFF
+              にしてください（実行中の引き継ぎも止まります）。この画面を開いたままにしてください。
             </span>
           </span>
           <input
@@ -121,6 +131,7 @@ export function AutoPurchaseTab({
             onChange={() => onAutoOpenChange(!autoOpen)}
           />
         </label>
+        {autoLine && <div className={`banner ${autoLine.tone}`}>{autoLine.text}</div>}
         {notifications.items.length === 0 ? (
           <p className="empty">通知はまだありません</p>
         ) : (
@@ -135,6 +146,7 @@ export function AutoPurchaseTab({
                       <button
                         type="button"
                         className="dark"
+                        disabled={manualBlocked}
                         onClick={() => onOpenConfirmation(note)}
                       >
                         確認画面を開く

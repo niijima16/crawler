@@ -21,10 +21,6 @@ type Props = {
   onClose: () => void;
   /** 新着通知から自動で開いた引き継ぎ（サーバーに長く粘らせる） */
   auto?: boolean;
-  /** 自動の引き継ぎを何回目に始め直したか（1 が最初） */
-  attempt?: number;
-  /** 順番待ちの新着通知の件数 */
-  queued?: number;
   onError?: (reason: string) => void;
 };
 
@@ -36,8 +32,6 @@ export function HandoffProgress({
   onReady,
   onClose,
   auto = false,
-  attempt = 1,
-  queued = 0,
   onError,
 }: Props) {
   const [states, setStates] = useState<Partial<Record<PreviewStepName, StepState>>>({});
@@ -94,14 +88,6 @@ export function HandoffProgress({
           );
         })}
       </ul>
-      {attempt > 1 && !error && (
-        <div className="banner warn">混雑のため、引き継ぎをやり直しています（{attempt}回目）</div>
-      )}
-      {queued > 0 && (
-        <div className="banner warn">
-          順番待ち: {queued}件（この引き継ぎが終わったら次を開きます）
-        </div>
-      )}
       {error ? (
         <div className="banner err">
           引き継ぎに失敗しました（{error}）。もう一度お試しください。

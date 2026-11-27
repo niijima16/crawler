@@ -642,14 +642,15 @@ describe("auto open on new arrivals", () => {
     cookie_value: "sess-xyz",
     confirm_url: "https://www.dollyteria.com/cart/confirm",
   };
-  const arrival = (id: string, productId: number, createdAt: string) => ({
+  const arrival = (id: string, productId: number, createdAt: string, message: string) => ({
     ...NOTE_NEW_ARRIVAL,
     id,
     product_id: productId,
     created_at: createdAt,
+    message,
   });
-  const FIRST = arrival("n10", 111, "2026-11-25T12:00:00Z");
-  const SECOND = arrival("n11", 222, "2026-11-25T12:00:01Z");
+  const FIRST = arrival("n10", 111, "2026-11-25T12:00:00Z", "新着: 一つ目");
+  const SECOND = arrival("n11", 222, "2026-11-25T12:00:01Z", "新着: 二つ目");
 
   let items: (typeof FIRST)[] = [];
 
@@ -667,15 +668,31 @@ describe("auto open on new arrivals", () => {
   afterEach(() => {
     vi.useRealTimers();
     localStorage.clear();
+    delete document.documentElement.dataset.pickupExtension;
   });
 
   const source = () => FakeEventSource.last as FakeEventSource;
   const tick = (ms = 1_000) => act(() => vi.advanceTimersByTimeAsync(ms));
+  const dialog = () => screen.queryByRole("region", { name: "確認画面への引き継ぎ" });
+  const line = () => screen.getByRole("region", { name: "自動" });
 
   async function arrive(...notes: (typeof FIRST)[]) {
     items = [...notes, ...items];
     await tick();
   }
+
+  // スイッチ ON で画面を開き、「自動」タブを表示して、一つ目の自動の引き継ぎが始まるまで進める
+  async function startAutoOnAutoTab() {
+    saveAutoOpen(true);
+    await ready();
+    fireEvent.click(screen.getByRole("tab", { name: /自動/ }));
+    await arrive(FIRST);
+    await waitFor(() => expect(FakeEventSource.last).not.toBeNull());
+    return source();
+  }
+
+  const turnSwitchOff = async () =>
+    fireEvent.click(await screen.findByRole("switch", { name: "新着通知で自動で確認画面を開く" }));
 
   it("opens the newest new arrival automatically when the switch is on", async () => {
     saveAutoOpen(true);
@@ -706,18 +723,41 @@ describe("auto open on new arrivals", () => {
     expect(source().url).toContain("product_id=111");
   });
 
-  it("queues arrivals while one runs and opens the next right after a sell-out", async () => {
-    saveAutoOpen(true);
-    await ready();
-    await arrive(FIRST);
-    await waitFor(() => expect(FakeEventSource.last).not.toBeNull());
-    const first = source();
+  it("runs an auto handoff without the progress dialog and shows one line instead", async () => {
+    await startAutoOnAutoTab();
 
+    expect(dialog()).toBeNull();
+    expect(line()).toHaveTextContent("自動: 新着: 一つ目 を引き継ぎ中");
+  });
+
+  it("shows the reached confirmation in the line when nothing is queued", async () => {
+    document.documentElement.dataset.pickupExtension = "1";
+    const first = await startAutoOnAutoTab();
+
+    first.emit("done", HANDOFF);
+
+    await waitFor(() =>
+      expect(line()).toHaveTextContent("自動: 新着: 一つ目 の確認画面を開きました"),
+    );
+    expect(dialog()).toBeNull();
+  });
+
+  it("opens the next right after reaching the confirmation, without closing anything", async () => {
+    const first = await startAutoOnAutoTab();
     await arrive(SECOND);
     expect(source()).toBe(first); // 実行中は次を開かない
-    expect(screen.getByRole("region", { name: "確認画面への引き継ぎ" })).toHaveTextContent(
-      "順番待ち: 1件",
-    );
+    expect(line()).toHaveTextContent("順番待ち 1件");
+
+    first.emit("done", HANDOFF);
+
+    await waitFor(() => expect(source()).not.toBe(first));
+    expect(source().url).toContain("product_id=222");
+    expect(line()).toHaveTextContent("自動: 新着: 二つ目 を引き継ぎ中");
+  });
+
+  it("opens the next right after a sell-out", async () => {
+    const first = await startAutoOnAutoTab();
+    await arrive(SECOND);
 
     first.emit("error", { reason: "not_purchasable" });
 
@@ -725,29 +765,51 @@ describe("auto open on new arrivals", () => {
     expect(source().url).toContain("product_id=222");
   });
 
-  it("after reaching the confirmation, waits until the dialog is closed before the next", async () => {
-    saveAutoOpen(true);
-    await ready();
-    await arrive(FIRST);
-    await waitFor(() => expect(FakeEventSource.last).not.toBeNull());
-    const first = source();
-    await arrive(SECOND);
+  it("says it was sold out when nothing is queued", async () => {
+    const first = await startAutoOnAutoTab();
+
+    first.emit("error", { reason: "not_purchasable" });
+
+    await waitFor(() => expect(line()).toHaveTextContent("自動: 新着: 一つ目 は売り切れでした"));
+  });
+
+  it("says the confirmation could not be opened without the extension", async () => {
+    // テスト環境に拡張は無い
+    const first = await startAutoOnAutoTab();
 
     first.emit("done", HANDOFF);
-    await tick();
+
+    await waitFor(() =>
+      expect(line()).toHaveTextContent(
+        "自動: 新着: 一つ目 の確認画面を開けませんでした（拡張機能が入っていません）",
+      ),
+    );
+  });
+
+  it("locks the manual open button while an auto handoff runs", async () => {
+    const first = await startAutoOnAutoTab();
+
+    expect(within(line()).getByRole("button", { name: "確認画面を開く" })).toBeDisabled();
+
+    first.emit("error", { reason: "login_failed" });
+    await waitFor(() =>
+      expect(within(line()).getByRole("button", { name: "確認画面を開く" })).toBeEnabled(),
+    );
+  });
+
+  it("does not restart when the login fails and says it failed", async () => {
+    const first = await startAutoOnAutoTab();
+
+    first.emit("error", { reason: "login_failed" });
+    await tick(1_000);
+
     expect(source()).toBe(first);
-
-    fireEvent.click(screen.getByRole("button", { name: "閉じる" }));
-
-    await waitFor(() => expect(source()).not.toBe(first));
-    expect(source().url).toContain("product_id=222");
+    expect(line()).toHaveTextContent("自動: 新着: 一つ目 の引き継ぎに失敗しました（login_failed）");
+    expect(dialog()).toBeNull();
   });
 
   it("restarts a busy auto handoff again and again until it ends otherwise", async () => {
-    saveAutoOpen(true);
-    await ready();
-    await arrive(FIRST);
-    await waitFor(() => expect(FakeEventSource.last).not.toBeNull());
+    await startAutoOnAutoTab();
 
     for (const reason of ["timeout", "upstream_error", "timeout", "timeout"]) {
       const before = source();
@@ -757,18 +819,18 @@ describe("auto open on new arrivals", () => {
       expect(source().url).toContain("product_id=111");
       expect(source().url).toContain("auto=true");
     }
-    expect(screen.getByRole("region", { name: "確認画面への引き継ぎ" })).toHaveTextContent(
-      "（5回目）",
-    );
+    expect(line()).toHaveTextContent("（混雑のためやり直し 5回目）");
+    expect(dialog()).toBeNull();
   });
 
-  it("does not restart a manual handoff", async () => {
+  it("does not restart a manual handoff and shows its dialog", async () => {
     items = [FIRST];
     await ready();
     fireEvent.click(screen.getByRole("tab", { name: /自動/ }));
     fireEvent.click(await screen.findByRole("button", { name: "確認画面を開く" }));
     await waitFor(() => expect(FakeEventSource.last).not.toBeNull());
     const manual = source();
+    expect(dialog()).not.toBeNull();
 
     manual.emit("error", { reason: "timeout" });
     await tick(1_000);
@@ -776,38 +838,19 @@ describe("auto open on new arrivals", () => {
     expect(source()).toBe(manual);
   });
 
-  async function startAutoOnAutoTab() {
-    saveAutoOpen(true);
-    await ready();
-    fireEvent.click(screen.getByRole("tab", { name: /自動/ }));
-    await arrive(FIRST);
-    await waitFor(() => expect(FakeEventSource.last).not.toBeNull());
-    return source();
-  }
-
-  const turnSwitchOff = async () =>
-    fireEvent.click(await screen.findByRole("switch", { name: "新着通知で自動で確認画面を開く" }));
-
-  it("does not restart when the login fails", async () => {
+  it("turning the switch off stops the running auto handoff, empties the queue and clears the line", async () => {
     const first = await startAutoOnAutoTab();
+    await arrive(SECOND);
 
-    first.emit("error", { reason: "login_failed" });
-    await tick(1_000);
+    await turnSwitchOff();
+    await tick();
 
-    expect(source()).toBe(first);
+    expect(first.closed).toBe(true);
+    expect(source()).toBe(first); // 次も開かない
+    expect(line()).not.toHaveTextContent("自動:");
   });
 
-  it("closing the dialog while waiting to restart stops the restart", async () => {
-    const first = await startAutoOnAutoTab();
-
-    first.emit("error", { reason: "timeout" });
-    fireEvent.click(screen.getByRole("button", { name: "閉じる" }));
-    await tick(1_000);
-
-    expect(source()).toBe(first);
-  });
-
-  it("turning the switch off while waiting to restart stops the restart and keeps the error", async () => {
+  it("turning the switch off while waiting to restart stops the restart", async () => {
     const first = await startAutoOnAutoTab();
 
     first.emit("error", { reason: "timeout" });
@@ -815,21 +858,6 @@ describe("auto open on new arrivals", () => {
     await tick(1_000);
 
     expect(source()).toBe(first);
-    expect(screen.getByRole("region", { name: "確認画面への引き継ぎ" })).toHaveTextContent(
-      "引き継ぎに失敗しました",
-    );
-  });
-
-  it("keeps the error visible when a handoff fails after the switch was turned off", async () => {
-    const first = await startAutoOnAutoTab();
-    await turnSwitchOff();
-
-    first.emit("error", { reason: "timeout" });
-    await tick(1_000);
-
-    expect(screen.getByRole("region", { name: "確認画面への引き継ぎ" })).toHaveTextContent(
-      "引き継ぎに失敗しました",
-    );
   });
 
   it("refreshes the unread count right after marking all as read", async () => {
@@ -849,21 +877,5 @@ describe("auto open on new arrivals", () => {
 
     // 1秒ごとの取得を待たずに反映する（タイマーは進めない）
     await waitFor(() => expect(screen.queryByText("未読 1")).toBeNull(), { timeout: 500 });
-  });
-
-  it("turning the switch off empties the queue", async () => {
-    saveAutoOpen(true);
-    await ready();
-    await arrive(FIRST);
-    await waitFor(() => expect(FakeEventSource.last).not.toBeNull());
-    const first = source();
-    await arrive(SECOND);
-
-    fireEvent.click(screen.getByRole("tab", { name: /自動/ }));
-    fireEvent.click(await screen.findByRole("switch", { name: "新着通知で自動で確認画面を開く" }));
-    first.emit("error", { reason: "not_purchasable" });
-    await tick();
-
-    expect(source()).toBe(first);
   });
 });

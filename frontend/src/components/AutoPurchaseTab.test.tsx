@@ -34,6 +34,18 @@ function setup(props: Partial<Parameters<typeof AutoPurchaseTab>[0]> = {}) {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("AutoPurchaseTab", () => {
+  it("shows the latest auto handoff result in one line", () => {
+    setup({ autoLine: { text: "自動: 新着: X の確認画面を開きました", tone: "ok" } });
+
+    expect(screen.getByText("自動: 新着: X の確認画面を開きました")).toBeInTheDocument();
+  });
+
+  it("cannot open a confirmation by hand while an auto handoff runs", () => {
+    setup({ manualBlocked: true, notifications: { unread: 1, items: [NOTE_NEW_ARRIVAL] } });
+
+    expect(screen.getByRole("button", { name: "確認画面を開く" })).toBeDisabled();
+  });
+
   it("has a switch to open the confirmation automatically on new arrivals", async () => {
     const { onAutoOpenChange } = setup();
 

@@ -3,7 +3,8 @@ from collections.abc import Callable
 from spider.application.ports import SiteClient
 from spider.domain.order import Order
 
-SALES_HISTORY_URL = "https://www.dollyteria.com/sales-history"
+SITE = "https://www.dollyteria.com"
+SALES_HISTORY_URL = f"{SITE}/sales-history"
 
 
 class ProductNotFound(Exception):

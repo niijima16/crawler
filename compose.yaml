@@ -1,0 +1,72 @@
+x-backend-env: &backend-env
+  PREVIEW_PARALLELISM: ${PREVIEW_PARALLELISM:-3}
+  PREVIEW_DEADLINE_SECONDS: ${PREVIEW_DEADLINE_SECONDS:-60}
+  TICK_DEADLINE_SECONDS: ${TICK_DEADLINE_SECONDS:-20}
+  # 21時の夜間チェックだけ、混雑対策で速い再試行にする（夜間のみ・負荷に注意）
+  NIGHTLY_PARALLELISM: ${NIGHTLY_PARALLELISM:-10}
+  NIGHTLY_RETRY_INTERVAL_SECONDS: ${NIGHTLY_RETRY_INTERVAL_SECONDS:-0.1}
+  # キーワードお気に入りのジャンル一覧をサイトから取得してキャッシュする秒数（既定1時間）
+  CATEGORY_CACHE_TTL_SECONDS: ${CATEGORY_CACHE_TTL_SECONDS:-3600}
+  # 注文確定は既定で無効。有効にするときだけ true にする（.env で上書き）
+  ALLOW_ORDER_SUBMIT: ${ALLOW_ORDER_SUBMIT:-false}
+  # 引き継ぎ時に、ホストの Chrome（--remote-debugging-port=9222）へ CDP 接続して同意チェックを入れる。
+  # 空なら無効。使うときは .env に AUTO_CONSENT_CDP_URL=http://host.docker.internal:9222
+  AUTO_CONSENT_CDP_URL: ${AUTO_CONSENT_CDP_URL:-}
+  # 資格情報の暗号化鍵。空なら、ローカル用に自動生成して CREDENTIALS_KEY_FILE に保存する
+  # （backend と worker で共有するボリューム。DB のボリュームと同じ寿命）。指定があれば、そちらを優先する
+  CREDENTIALS_KEY: ${CREDENTIALS_KEY:-}
+  CREDENTIALS_KEY_FILE: /secrets/credentials.key
+  DYNAMODB_ENDPOINT: http://dynamodb:8000
+  AWS_REGION: ${AWS_REGION:-ap-northeast-1}
+
+services:
+  dynamodb:
+    image: amazon/dynamodb-local:3.3.2
+    # ボリュームへ書き込むため root で動かす（ローカル開発用）
+    user: root
+    command: ["-jar", "DynamoDBLocal.jar", "-sharedDb", "-dbPath", "/data"]
+    volumes:
+      - dynamodb-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/8000"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  backend:
+    build: ./backend
+    environment: *backend-env
+    volumes:
+      - app-secrets:/secrets
+    depends_on:
+      dynamodb:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # 1分ごとの監視と、毎晩21時（JST）の確認。画面には出ない
+  worker:
+    build: ./backend
+    command: ["python", "-m", "spider.worker"]
+    environment: *backend-env
+    volumes:
+      - app-secrets:/secrets
+    healthcheck:
+      disable: true
+    depends_on:
+      dynamodb:
+        condition: service_healthy
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "127.0.0.1:8080:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  dynamodb-data:
+  app-secrets:

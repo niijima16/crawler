@@ -171,6 +171,8 @@ export const api = {
   deleteFavorite: (id: string) => request<void>(`/api/favorites/${id}`, remove),
   notifications: () => request<NotificationList>("/api/notifications"),
   markNotificationsRead: () => request<{ unread: number }>("/api/notifications/read", post({})),
+  deleteNotification: (id: string) => request<void>(`/api/notifications/${id}`, remove),
+  deleteAllNotifications: () => request<void>("/api/notifications", remove),
   autoStatus: () => request<AutoStatus>("/api/auto-purchase/status"),
   setAutoEnabled: (enabled: boolean) =>
     request<AutoStatus>("/api/auto-purchase/enabled", put({ enabled })),

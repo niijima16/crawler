@@ -273,14 +273,7 @@ class DynamoNotifications:
         ]
 
     async def _unread_keys(self) -> list[dict[str, Any]]:
-        return await asyncio.to_thread(
-            _items,
-            self._table,
-            "query",
-            KeyConditionExpression=Key("pk").eq(_NOTIFICATION_PARTITION),
-            FilterExpression=Attr("read").eq(False),
-            ProjectionExpression="pk, sk",
-        )
+        return await self._keys(FilterExpression=Attr("read").eq(False))
 
     async def unread_count(self) -> int:
         return len(await self._unread_keys())
@@ -294,6 +287,27 @@ class DynamoNotifications:
                 ExpressionAttributeNames={"#r": "read"},
                 ExpressionAttributeValues={":true": True},
             )
+
+    async def _keys(self, **filters: Any) -> list[dict[str, Any]]:
+        return await asyncio.to_thread(
+            _items,
+            self._table,
+            "query",
+            KeyConditionExpression=Key("pk").eq(_NOTIFICATION_PARTITION),
+            ProjectionExpression="pk, sk",
+            **filters,
+        )
+
+    async def _delete_keys(self, keys: list[dict[str, Any]]) -> None:
+        for key in keys:
+            await asyncio.to_thread(self._table.delete_item, Key={"pk": key["pk"], "sk": key["sk"]})
+
+    async def delete(self, notification_id: str) -> None:
+        # sk に作成時刻が入っているため、id で絞り込んでキーを得てから消す
+        await self._delete_keys(await self._keys(FilterExpression=Attr("id").eq(notification_id)))
+
+    async def delete_all(self) -> None:
+        await self._delete_keys(await self._keys())
 
 
 class DynamoSettings:

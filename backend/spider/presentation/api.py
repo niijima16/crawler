@@ -444,6 +444,14 @@ def create_app(deps: Dependencies) -> FastAPI:
         await favorite_cases.mark_notifications_read(cases)
         return Unread(unread=0)
 
+    @router.delete("/notifications/{notification_id}", status_code=204)
+    async def delete_notification(notification_id: str) -> None:
+        await favorite_cases.delete_notification(cases, notification_id)
+
+    @router.delete("/notifications", status_code=204)
+    async def delete_all_notifications() -> None:
+        await favorite_cases.delete_all_notifications(cases)
+
     async def auto_purchase_state() -> AutoPurchaseState:
         status = await favorite_cases.auto_purchase_status(
             cases, deps.preview_config.allow_order_submit

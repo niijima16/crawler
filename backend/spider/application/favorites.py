@@ -188,6 +188,14 @@ async def mark_notifications_read(deps: FavoriteDeps) -> None:
     await deps.notifications.mark_all_read()
 
 
+async def delete_notification(deps: FavoriteDeps, notification_id: str) -> None:
+    await deps.notifications.delete(notification_id)
+
+
+async def delete_all_notifications(deps: FavoriteDeps) -> None:
+    await deps.notifications.delete_all()
+
+
 async def auto_purchase_status(
     deps: FavoriteDeps, order_submit_allowed: bool
 ) -> AutoPurchaseStatus:

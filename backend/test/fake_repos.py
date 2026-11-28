@@ -112,6 +112,14 @@ class MemoryNotifications:
         self._writes.count += 1
         self._items = [n.model_copy(update={"read": True}) for n in self._items]
 
+    async def delete(self, notification_id: str) -> None:
+        self._writes.count += 1
+        self._items = [n for n in self._items if n.id != notification_id]
+
+    async def delete_all(self) -> None:
+        self._writes.count += 1
+        self._items = []
+
 
 class MemorySettings:
     def __init__(self, writes: "WriteCounter") -> None:

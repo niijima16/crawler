@@ -107,6 +107,50 @@ describe("AutoPurchaseTab", () => {
     expect(calls[0].key).toBe("POST /api/notifications/read");
   });
 
+  it("deletes one notification", async () => {
+    const { calls } = mockApi({
+      [`DELETE /api/notifications/${NOTE_REJECTED.id}`]: () => new Response(null, { status: 204 }),
+    });
+    const { tab, onChanged } = setup({ notifications: { unread: 1, items: [NOTE_REJECTED] } });
+
+    await user.click(within(tab).getByRole("button", { name: "削除" }));
+
+    await waitFor(() => expect(onChanged).toHaveBeenCalled());
+    expect(calls.map((c) => c.key)).toEqual([`DELETE /api/notifications/${NOTE_REJECTED.id}`]);
+  });
+
+  it("deletes all notifications after confirming", async () => {
+    const { calls } = mockApi({
+      "DELETE /api/notifications": () => new Response(null, { status: 204 }),
+    });
+    const { tab, onChanged } = setup();
+
+    await user.click(within(tab).getByRole("button", { name: "すべて削除" }));
+    expect(tab).toHaveTextContent("通知をすべて削除します");
+    await user.click(within(tab).getByRole("button", { name: "削除する" }));
+
+    await waitFor(() => expect(onChanged).toHaveBeenCalled());
+    expect(calls.map((c) => c.key)).toEqual(["DELETE /api/notifications"]);
+  });
+
+  it("does not delete anything when the confirmation is cancelled", async () => {
+    const { calls } = mockApi({});
+    const { tab, onChanged } = setup();
+
+    await user.click(within(tab).getByRole("button", { name: "すべて削除" }));
+    await user.click(within(tab).getByRole("button", { name: "やめる" }));
+
+    expect(calls).toEqual([]);
+    expect(onChanged).not.toHaveBeenCalled();
+    expect(within(tab).getByRole("button", { name: "すべて削除" })).toBeEnabled();
+  });
+
+  it("cannot delete all when there are no notifications", () => {
+    const { tab } = setup({ notifications: { unread: 0, items: [] } });
+
+    expect(within(tab).getByRole("button", { name: "すべて削除" })).toBeDisabled();
+  });
+
   it("shows an empty state", () => {
     const { tab } = setup({ notifications: { unread: 0, items: [] } });
 

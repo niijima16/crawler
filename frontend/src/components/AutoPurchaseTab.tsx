@@ -38,6 +38,7 @@ export function AutoPurchaseTab({
   manualBlocked = false,
 }: Props) {
   const [error, setError] = useState<string | null>(null);
+  const [confirmingDeleteAll, setConfirmingDeleteAll] = useState(false);
 
   async function run(action: () => Promise<unknown>) {
     setError(null);
@@ -141,8 +142,8 @@ export function AutoPurchaseTab({
                 <span className="dot" />
                 <div>
                   <div>{note.message}</div>
-                  {note.kind === "new_arrival" && note.product_id !== null && (
-                    <div className="row" style={{ marginTop: "6px" }}>
+                  <div className="row" style={{ marginTop: "6px" }}>
+                    {note.kind === "new_arrival" && note.product_id !== null && (
                       <button
                         type="button"
                         className="dark"
@@ -151,8 +152,15 @@ export function AutoPurchaseTab({
                       >
                         確認画面を開く
                       </button>
-                    </div>
-                  )}
+                    )}
+                    <button
+                      type="button"
+                      className="secondary"
+                      onClick={() => run(() => api.deleteNotification(note.id))}
+                    >
+                      削除
+                    </button>
+                  </div>
                   <div className="t">{new Date(note.created_at).toLocaleString("ja-JP")}</div>
                 </div>
               </li>
@@ -168,6 +176,37 @@ export function AutoPurchaseTab({
           >
             すべて既読にする
           </button>
+          {confirmingDeleteAll ? (
+            <div className="push row">
+              <span className="muted">通知をすべて削除します</span>
+              <button
+                type="button"
+                className="danger"
+                onClick={() => {
+                  setConfirmingDeleteAll(false);
+                  run(() => api.deleteAllNotifications());
+                }}
+              >
+                削除する
+              </button>
+              <button
+                type="button"
+                className="secondary"
+                onClick={() => setConfirmingDeleteAll(false)}
+              >
+                やめる
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              className="secondary"
+              disabled={notifications.items.length === 0}
+              onClick={() => setConfirmingDeleteAll(true)}
+            >
+              すべて削除
+            </button>
+          )}
         </div>
       </div>
       {error && <div className="banner err">{error}</div>}

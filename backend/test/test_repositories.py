@@ -238,6 +238,34 @@ async def test_notifications_can_be_marked_read(repos: Repos) -> None:
     assert all(n.read for n in await repos.notifications.list_all())
 
 
+async def test_a_notification_can_be_deleted(repos: Repos) -> None:
+    await repos.notifications.add(_note("n1", 1))
+    await repos.notifications.add(_note("n2", 2))
+
+    await repos.notifications.delete("n1")
+
+    assert [n.id for n in await repos.notifications.list_all()] == ["n2"]
+    assert await repos.notifications.unread_count() == 1
+
+
+async def test_deleting_an_unknown_notification_does_nothing(repos: Repos) -> None:
+    await repos.notifications.add(_note("n1", 1))
+
+    await repos.notifications.delete("missing")
+
+    assert [n.id for n in await repos.notifications.list_all()] == ["n1"]
+
+
+async def test_all_notifications_can_be_deleted(repos: Repos) -> None:
+    await repos.notifications.add(_note("n1", 1))
+    await repos.notifications.add(_note("n2", 2, read=True))
+
+    await repos.notifications.delete_all()
+
+    assert await repos.notifications.list_all() == []
+    assert await repos.notifications.unread_count() == 0
+
+
 # --- 設定 ---------------------------------------------------------------------
 
 

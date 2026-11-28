@@ -877,6 +877,42 @@ def test_notifications_include_product_and_payment_for_new_arrivals() -> None:
     assert item["product_id"] == 807736 and item["payment_method"] == "8"
 
 
+def _note(nid: str) -> Notification:
+    return Notification(
+        id=nid,
+        favorite_id="k1",
+        kind="new_arrival",
+        message=f"新着 {nid}",
+        created_at=datetime(2026, 11, 23, tzinfo=UTC),
+        read=False,
+    )
+
+
+def test_a_notification_can_be_deleted() -> None:
+    repos = MemoryRepos()
+    with TestClient(create_app(_deps(Factory(), repos=repos))) as client:
+        asyncio.run(repos.notifications.add(_note("n1")))
+        asyncio.run(repos.notifications.add(_note("n2")))
+        response = client.delete("/api/notifications/n1")
+        listed = client.get("/api/notifications").json()
+
+    assert response.status_code == 204
+    assert [n["id"] for n in listed["items"]] == ["n2"]
+    assert listed["unread"] == 1
+
+
+def test_all_notifications_can_be_deleted() -> None:
+    repos = MemoryRepos()
+    with TestClient(create_app(_deps(Factory(), repos=repos))) as client:
+        asyncio.run(repos.notifications.add(_note("n1")))
+        asyncio.run(repos.notifications.add(_note("n2")))
+        response = client.delete("/api/notifications")
+        listed = client.get("/api/notifications").json()
+
+    assert response.status_code == 204
+    assert listed == {"unread": 0, "items": []}
+
+
 def test_store_pickup_preview_stream_emits_steps_then_done_with_the_session() -> None:
     with _app(FakeSite().factory) as client:
         account_id = _with_account(client)
